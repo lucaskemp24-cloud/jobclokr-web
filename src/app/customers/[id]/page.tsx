@@ -1,7 +1,9 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Modal from "@/components/ui/Modal";
 import AppLayout from "@/components/layout/AppLayout";
 import Link from "next/link";
+import { loadProjects, saveProjects } from "@/lib/projects";
 export default function CustomerDetailsPage()
  {
   const [activeTab, setActiveTab] = useState<
@@ -10,6 +12,11 @@ export default function CustomerDetailsPage()
 const [showProjectModal, setShowProjectModal] = useState(false);
 const [projectName, setProjectName] = useState("");
 const [projectStatus, setProjectStatus] = useState("Not Started");
+const [projects, setProjects] = useState(loadProjects());
+const [editingProjectId, setEditingProjectId] = useState<number | null>(null);
+useEffect(() => {
+  saveProjects(projects);
+}, [projects]);
   return (
     <AppLayout>
      
@@ -102,74 +109,59 @@ const [projectStatus, setProjectStatus] = useState("Not Started");
   + New Project
 </button>
   </div>
-{showProjectModal && (
-  <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-    <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md">
-      <h2 className="text-2xl font-semibold mb-4">New Project</h2>
 
-      <input
-        type="text"
-        placeholder="Project Name"
-        value={projectName}
-        onChange={(e) => setProjectName(e.target.value)}
-        className="w-full border rounded-lg p-3 mb-4"
-      />
+ <div className="space-y-3">
+  {projects.map((project) => (
+  <div
+  key={project.id}
+  className="border rounded-lg p-4 hover:bg-slate-50"
+>
+  <div className="flex items-start justify-between">
+    <div>
+      <Link
+  href={`/customers/1/projects/${project.id}`}
+  className="font-semibold text-blue-600 hover:underline"
+>
+  {project.name}
+</Link>
 
-      <select
-        value={projectStatus}
-        onChange={(e) => setProjectStatus(e.target.value)}
-        className="w-full border rounded-lg p-3 mb-6"
-      >
-        <option>Not Started</option>
-        <option>In Progress</option>
-        <option>Completed</option>
-      </select>
-
-      <div className="flex justify-end gap-3">
-        <button
-          onClick={() => setShowProjectModal(false)}
-          className="px-4 py-2 border rounded-lg"
-        >
-          Cancel
-        </button>
-
-        <button
-          onClick={() => setShowProjectModal(false)}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg"
-        >
-          Save Project
-        </button>
-      </div>
-    </div>
-  </div>
-)}
-  <div className="space-y-3">
-
-    <div className="border rounded-lg p-4 hover:bg-slate-50 cursor-pointer">
-      <h3 className="font-semibold">Office Remodel</h3>
       <p className="text-gray-500 text-sm">
-        Status: In Progress • Assigned: Mike & James
+        Status: {project.status}
+        {project.details && ` • ${project.details}`}
       </p>
     </div>
-
-    <div className="border rounded-lg p-4 hover:bg-slate-50 cursor-pointer">
-      <h3 className="font-semibold">Warehouse Lighting Upgrade</h3>
-      <p className="text-gray-500 text-sm">
-        Status: Scheduled • Assigned: Crew A
-      </p>
-    </div>
-
-    <div className="border rounded-lg p-4 hover:bg-slate-50 cursor-pointer">
-      <h3 className="font-semibold">Service Contract</h3>
-      <p className="text-gray-500 text-sm">
-        Status: Completed
-      </p>
-    </div>
-
+<button
+  onClick={() => {
+    setEditingProjectId(project.id);
+    setProjectName(project.name);
+    setProjectStatus(project.status);
+    setShowProjectModal(true);
+  }}
+  className="text-blue-600 hover:text-blue-800 font-medium mr-4"
+>
+  Edit
+</button>
+    <button
+      onClick={() => {
+        if (window.confirm(`Delete "${project.name}"?`)) {
+          setProjects(
+            projects.filter(
+              (savedProject) => savedProject.id !== project.id
+            )
+          );
+        }
+      }}
+      className="text-red-600 hover:text-red-800 font-medium"
+    >
+      
+      Delete
+    </button>
   </div>
 </div>
-
-      </div>
+  ))}
+</div>
+</div>
+</div>
 )}
 
 {activeTab === "documents" && (
@@ -189,7 +181,78 @@ const [projectStatus, setProjectStatus] = useState("Not Started");
     </p>
   </div>
 )}
+<Modal
+  isOpen={showProjectModal}
+  onClose={() => setShowProjectModal(false)}
+  title={editingProjectId ? "Edit Project" : "New Project"}
+>
+  <div className="space-y-4">
+    <input
+      type="text"
+      placeholder="Project Name"
+      value={projectName}
+      onChange={(e) => setProjectName(e.target.value)}
+      className="w-full border rounded-lg p-3"
+    />
 
+    <select
+      value={projectStatus}
+      onChange={(e) => setProjectStatus(e.target.value)}
+      className="w-full border rounded-lg p-3"
+    >
+      <option>Not Started</option>
+      <option>In Progress</option>
+      <option>Completed</option>
+    </select>
+
+    <button
+      onClick={() => {
+  if (!projectName.trim()) {
+    alert("Please enter a project name.");
+    return;
+  }
+
+  if (editingProjectId !== null) {
+  setProjects(
+    projects.map((project) =>
+      project.id === editingProjectId
+        ? {
+            ...project,
+            name: projectName,
+            status: projectStatus,
+          }
+        : project
+    )
+  );
+} else {
+  setProjects([
+    ...projects,
+   {
+  id: Date.now(),
+  name: projectName,
+  status: projectStatus,
+  details: "",
+  customer: "Lucas Communications",
+  startDate: "",
+  dueDate: "",
+  address: "",
+  totalHours: 0,
+  employees: [],
+},
+  ]);
+}
+
+  setProjectName("");
+  setProjectStatus("Not Started");
+  setEditingProjectId(null);
+  setShowProjectModal(false);
+}}
+      className="bg-blue-600 text-white px-4 py-3 rounded-lg w-full"
+    >
+      {editingProjectId !== null ? "Update Project" : "Save Project"}
+    </button>
+  </div>
+</Modal>
 </AppLayout>
 );
 }
