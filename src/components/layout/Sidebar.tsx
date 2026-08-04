@@ -1,89 +1,150 @@
-  import Link from "next/link";
+"use client";
 
-  export default function Sidebar() {
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+
+import {
+  isOfficeUser,
+  loadAuthUser,
+  type AuthUser,
+} from "@/lib/auth";
+
+type NavigationItem = {
+  href: string;
+  label: string;
+  icon: string;
+};
+
+const officeNavigation: NavigationItem[] = [
+  {
+    href: "/",
+    label: "Dashboard",
+    icon: "📊",
+  },
+  {
+    href: "/customers",
+    label: "Customers",
+    icon: "👥",
+  },
+  {
+    href: "/projects",
+    label: "Projects",
+    icon: "📁",
+  },
+  {
+    href: "/employees",
+    label: "Employees",
+    icon: "👷",
+  },
+  {
+    href: "/schedule",
+    label: "Schedule",
+    icon: "🗓️",
+  },
+  {
+    href: "/time",
+    label: "Time",
+    icon: "⏰",
+  },
+  {
+    href: "/reports",
+    label: "Reports",
+    icon: "📈",
+  },
+  {
+    href: "/settings",
+    label: "Settings",
+    icon: "⚙️",
+  },
+];
+
+const employeeNavigation: NavigationItem[] = [
+  {
+    href: "/employee-portal",
+    label: "Employee Portal",
+    icon: "📱",
+  },
+];
+
+export default function Sidebar() {
+  const pathname = usePathname();
+  const router = useRouter();
+
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [authLoaded, setAuthLoaded] = useState(false);
+
+  useEffect(() => {
+    const savedUser = loadAuthUser();
+
+    if (!savedUser) {
+      setAuthLoaded(true);
+      router.replace("/login");
+      return;
+    }
+
+    setUser(savedUser);
+    setAuthLoaded(true);
+  }, [router]);
+
+  if (!authLoaded) {
     return (
-      <aside className="w-64 bg-slate-900 text-white min-h-screen p-6">
-        <h1 className="text-3xl font-bold text-blue-500 mb-10">
+      <aside className="min-h-screen w-56 bg-slate-950 p-5 text-white">
+        <div className="text-2xl font-bold text-blue-500">
           JobClokr
-        </h1>
-
-        <nav>
-          <ul className="space-y-2">
-
-            <li>
-              <Link
-                href="/"
-                className="block rounded-lg px-4 py-3 hover:bg-slate-800"
-              >
-                📊 Dashboard
-              </Link>
-            </li>
-
-            <li>
-              <Link
-                href="/customers"
-                className="block rounded-lg px-4 py-3 hover:bg-slate-800"
-              >
-                👥 Customers
-              </Link>
-            </li>
-
-            <li>
-              <Link
-                href="/projects"
-                className="block rounded-lg px-4 py-3 hover:bg-slate-800"
-              >
-                📁 Projects
-              </Link>
-            </li>
-
-            <li>
-              <Link
-                href="/employees"
-                className="block rounded-lg px-4 py-3 hover:bg-slate-800"
-              >
-                👷 Employees
-              </Link>
-            </li>
-
-            <li>
-              <Link
-                href="/schedule"
-                className="block rounded-lg px-4 py-3 hover:bg-slate-800"
-              >
-                📅 Schedule
-              </Link>
-            </li>
-
-            <li>
-              <Link
-                href="/time"
-                className="block rounded-lg px-4 py-3 hover:bg-slate-800"
-              >
-                ⏰ Time
-              </Link>
-            </li>
-
-            <li>
-              <Link
-                href="/reports"
-                className="block rounded-lg px-4 py-3 hover:bg-slate-800"
-              >
-                📈 Reports
-              </Link>
-            </li>
-
-            <li>
-              <Link
-                href="/settings"
-                className="block rounded-lg px-4 py-3 hover:bg-slate-800"
-              >
-                ⚙️ Settings
-              </Link>
-            </li>
-
-          </ul>
-        </nav>
+        </div>
       </aside>
     );
   }
+
+  if (!user) {
+    return null;
+  }
+
+  const navigationItems = isOfficeUser(user)
+    ? officeNavigation
+    : employeeNavigation;
+
+  return (
+    <aside className="min-h-screen w-56 shrink-0 bg-slate-950 px-5 py-6 text-white">
+      <Link
+        href={isOfficeUser(user) ? "/" : "/employee-portal"}
+        className="mb-10 block text-3xl font-bold text-blue-500"
+      >
+        JobClokr
+      </Link>
+
+      <nav className="space-y-2">
+        {navigationItems.map((item) => {
+          const isActive =
+            item.href === "/"
+              ? pathname === "/"
+              : pathname === item.href ||
+                pathname.startsWith(`${item.href}/`);
+
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex items-center gap-3 rounded-lg px-3 py-3 transition ${
+                isActive
+                  ? "bg-blue-600 text-white"
+                  : "text-slate-200 hover:bg-slate-800 hover:text-white"
+              }`}
+            >
+              <span aria-hidden="true">{item.icon}</span>
+              <span>{item.label}</span>
+            </Link>
+          );
+        })}
+      </nav>
+
+      <div className="mt-auto pt-10 text-xs text-slate-500">
+        Signed in as
+        <p className="mt-1 font-medium text-slate-300">
+          {user.name}
+        </p>
+      </div>
+    </aside>
+  );
+}
