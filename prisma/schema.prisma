@@ -1,0 +1,293 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum EmployeeRole {
+  OWNER
+  OFFICE
+  FOREMAN
+  EMPLOYEE
+}
+
+enum AssignmentPriority {
+  NORMAL
+  HIGH
+  EMERGENCY
+}
+
+model Company {
+  id        Int      @id @default(autoincrement())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  customers           Customer[]
+  employees           Employee[]
+  projects            Project[]
+  scheduleAssignments ScheduleAssignment[]
+  settings            CompanySettings?
+}
+
+model CompanySettings {
+  id        Int @id @default(autoincrement())
+  companyId Int @unique
+
+  phone   String?
+  email   String?
+  website String?
+  address String?
+
+  defaultShiftStart String @default("07:00")
+  defaultShiftEnd   String @default("15:30")
+
+  overtimeThreshold Float @default(40)
+  lunchDuration     Int   @default(30)
+
+  punchRounding String @default("None")
+
+  gpsTrackingEnabled      Boolean @default(false)
+  allowEmployeePunchEdits Boolean @default(false)
+  requireClockOutNotes    Boolean @default(false)
+
+  clockInReminderEnabled     Boolean @default(false)
+  missedClockOutNotification Boolean @default(false)
+  overtimeNotification       Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+}
+
+model Customer {
+  id        Int @id @default(autoincrement())
+  companyId Int
+
+  name        String
+  contactName String?
+  email       String?
+  phone       String?
+  address     String?
+  city        String?
+  state       String?
+  zip         String?
+  notes       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projects Project[]
+
+  @@index([companyId])
+}
+
+model Employee {
+  id        Int @id @default(autoincrement())
+  companyId Int
+
+  firstName String
+  lastName  String
+
+  email String?
+  phone String?
+
+  role   EmployeeRole @default(EMPLOYEE)
+  active Boolean      @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  assignments         EmployeeProject[]
+  timeEntries         TimeEntry[]
+  materials           JobMaterial[]
+  dailyNotes          DailyNote[]
+  photos              JobPhoto[]
+  documents           ProjectDocument[]
+  scheduleAssignments ScheduleAssignmentEmployee[]
+
+  @@index([companyId])
+}
+
+model Project {
+  id         Int @id @default(autoincrement())
+  companyId  Int
+  customerId Int
+
+  name        String
+  description String?
+  address     String?
+  status      String @default("Scheduled")
+
+  startDate DateTime?
+  dueDate   DateTime?
+  closedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  assignments         EmployeeProject[]
+  timeEntries         TimeEntry[]
+  materials           JobMaterial[]
+  dailyNotes          DailyNote[]
+  photos              JobPhoto[]
+  documents           ProjectDocument[]
+  scheduleAssignments ScheduleAssignment[]
+
+  @@index([companyId])
+  @@index([customerId])
+}
+
+model EmployeeProject {
+  id         Int      @id @default(autoincrement())
+  projectId  Int
+  employeeId Int
+  assignedAt DateTime @default(now())
+
+  project  Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, employeeId])
+  @@index([employeeId])
+}
+
+model ScheduleAssignment {
+  id        Int @id @default(autoincrement())
+  companyId Int
+  projectId Int
+
+  date     DateTime           @db.Date
+  priority AssignmentPriority @default(NORMAL)
+  notes    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  employees ScheduleAssignmentEmployee[]
+
+  @@unique([companyId, projectId, date])
+  @@index([companyId, date])
+  @@index([projectId])
+}
+
+model ScheduleAssignmentEmployee {
+  id           Int @id @default(autoincrement())
+  assignmentId Int
+  employeeId   Int
+
+  assignment ScheduleAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  employee   Employee           @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([assignmentId, employeeId])
+  @@index([employeeId])
+}
+
+model TimeEntry {
+  id         Int @id @default(autoincrement())
+  projectId  Int
+  employeeId Int
+
+  clockIn  DateTime
+  clockOut DateTime?
+
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project  Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([employeeId])
+  @@index([clockIn])
+}
+
+model JobMaterial {
+  id         Int @id @default(autoincrement())
+  projectId  Int
+  employeeId Int
+
+  materialName String
+  quantity     Float
+  unit         String
+  notes        String?
+
+  createdAt DateTime @default(now())
+
+  project  Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([employeeId])
+  @@index([createdAt])
+}
+
+model DailyNote {
+  id         Int @id @default(autoincrement())
+  projectId  Int
+  employeeId Int
+
+  note String
+
+  createdAt DateTime @default(now())
+
+  project  Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([employeeId])
+  @@index([createdAt])
+}
+
+model JobPhoto {
+  id         Int @id @default(autoincrement())
+  projectId  Int
+  employeeId Int
+
+  imageUrl String
+  fileName String?
+  note     String?
+
+  createdAt DateTime @default(now())
+
+  project  Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([employeeId])
+  @@index([createdAt])
+}
+
+model ProjectDocument {
+  id         Int @id @default(autoincrement())
+  projectId  Int
+  employeeId Int
+
+  fileName String
+  fileUrl  String
+  fileType String?
+  note     String?
+
+  createdAt DateTime @default(now())
+
+  project  Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([employeeId])
+  @@index([createdAt])
+}

@@ -2,7 +2,6 @@
 
 import {
   useEffect,
-  useRef,
   useState,
 } from "react";
 
@@ -12,7 +11,6 @@ import {
   applyTheme,
   defaultSettings,
   loadSettings,
-  resetSettings,
   saveSettings,
   type CompanySettings,
 } from "@/lib/settings";
@@ -26,12 +24,16 @@ function SettingToggle({
   label: string;
   description: string;
   checked: boolean;
-  onChange: (checked: boolean) => void;
+  onChange: (
+    checked: boolean
+  ) => void;
 }) {
   return (
     <label className="flex cursor-pointer items-start justify-between gap-6 rounded-lg border border-slate-200 p-4 dark:border-slate-700">
       <div>
-        <p className="font-medium">{label}</p>
+        <p className="font-medium">
+          {label}
+        </p>
 
         <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
           {description}
@@ -42,7 +44,9 @@ function SettingToggle({
         type="checkbox"
         checked={checked}
         onChange={(event) =>
-          onChange(event.target.checked)
+          onChange(
+            event.target.checked
+          )
         }
         className="mt-1 h-5 w-5"
       />
@@ -51,38 +55,143 @@ function SettingToggle({
 }
 
 export default function SettingsPage() {
-  const importInputRef =
-    useRef<HTMLInputElement | null>(null);
+  const [
+    settings,
+    setSettings,
+  ] =
+    useState<CompanySettings>(
+      defaultSettings
+    );
 
-  const [settings, setSettings] =
-    useState<CompanySettings>(defaultSettings);
-
-  const [settingsLoaded, setSettingsLoaded] =
+  const [
+    settingsLoaded,
+    setSettingsLoaded,
+  ] =
     useState(false);
 
-  const [message, setMessage] = useState("");
-  const [messageType, setMessageType] =
-    useState<"success" | "error">("success");
+  const [
+    saving,
+    setSaving,
+  ] =
+    useState(false);
 
-  useEffect(() => {
-    const loadedSettings = loadSettings();
+  const [
+    message,
+    setMessage,
+  ] =
+    useState("");
 
-    setSettings(loadedSettings);
-    applyTheme(loadedSettings.theme);
-    setSettingsLoaded(true);
-  }, []);
+  const [
+    messageType,
+    setMessageType,
+  ] =
+    useState<
+      "success" | "error"
+    >("success");
 
   function showMessage(
     text: string,
-    type: "success" | "error" = "success"
+    type:
+      | "success"
+      | "error" = "success"
   ) {
     setMessage(text);
     setMessageType(type);
 
-    window.setTimeout(() => {
-      setMessage("");
-    }, 3500);
+    window.setTimeout(
+      () => {
+        setMessage("");
+      },
+      3500
+    );
   }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPageSettings() {
+      /*
+        Theme and time format stay
+        device-specific for now.
+      */
+      const localSettings =
+        loadSettings();
+
+      applyTheme(
+        localSettings.theme
+      );
+
+      try {
+        const response =
+          await fetch(
+            "/api/settings",
+            {
+              cache:
+                "no-store",
+            }
+          );
+
+        const data =
+          await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data.error ||
+              "Unable to load company settings."
+          );
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        setSettings({
+          ...localSettings,
+          ...data,
+
+          /*
+            Keep these two
+            device-specific.
+          */
+          theme:
+            localSettings.theme,
+
+          timeFormat:
+            localSettings.timeFormat,
+        });
+      } catch (error) {
+        console.error(
+          "Settings load failed:",
+          error
+        );
+
+        if (!cancelled) {
+          setSettings(
+            localSettings
+          );
+
+          showMessage(
+            error instanceof Error
+              ? error.message
+              : "Unable to load company settings.",
+            "error"
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setSettingsLoaded(
+            true
+          );
+        }
+      }
+    }
+
+    void loadPageSettings();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function updateSetting<
     K extends keyof CompanySettings
@@ -90,193 +199,299 @@ export default function SettingsPage() {
     key: K,
     value: CompanySettings[K]
   ) {
-    setSettings((currentSettings) => ({
-      ...currentSettings,
-      [key]: value,
-    }));
+    setSettings(
+      (
+        currentSettings
+      ) => ({
+        ...currentSettings,
+        [key]: value,
+      })
+    );
 
-    if (key === "theme") {
-      applyTheme(value as CompanySettings["theme"]);
+    if (
+      key === "theme"
+    ) {
+      applyTheme(
+        value as CompanySettings["theme"]
+      );
     }
   }
 
-  function handleSave() {
-    saveSettings(settings);
-    applyTheme(settings.theme);
-    showMessage("Settings saved successfully.");
+  async function handleSave() {
+    if (saving) {
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const response =
+        await fetch(
+          "/api/settings",
+          {
+            method: "PUT",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body:
+              JSON.stringify({
+                companyName:
+                  settings.companyName,
+
+                phone:
+                  settings.phone,
+
+                email:
+                  settings.email,
+
+                website:
+                  settings.website,
+
+                address:
+                  settings.address,
+
+                defaultShiftStart:
+                  settings.defaultShiftStart,
+
+                defaultShiftEnd:
+                  settings.defaultShiftEnd,
+
+                overtimeThreshold:
+                  settings.overtimeThreshold,
+
+                lunchDuration:
+                  settings.lunchDuration,
+
+                punchRounding:
+                  settings.punchRounding,
+
+                gpsTrackingEnabled:
+                  settings.gpsTrackingEnabled,
+
+                allowEmployeePunchEdits:
+                  settings.allowEmployeePunchEdits,
+
+                requireClockOutNotes:
+                  settings.requireClockOutNotes,
+
+                clockInReminderEnabled:
+                  settings.clockInReminderEnabled,
+
+                missedClockOutNotification:
+                  settings.missedClockOutNotification,
+
+                overtimeNotification:
+                  settings.overtimeNotification,
+              }),
+          }
+        );
+
+      const data =
+        await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+            "Unable to save settings."
+        );
+      }
+
+      const savedSettings: CompanySettings =
+        {
+          ...settings,
+          ...data,
+
+          /*
+            Database response
+            does not control
+            these device settings.
+          */
+          theme:
+            settings.theme,
+
+          timeFormat:
+            settings.timeFormat,
+        };
+
+      setSettings(
+        savedSettings
+      );
+
+      /*
+        Keep appearance
+        preferences available
+        on this device.
+      */
+      saveSettings(
+        savedSettings
+      );
+
+      applyTheme(
+        savedSettings.theme
+      );
+
+      showMessage(
+        "Settings saved successfully."
+      );
+    } catch (error) {
+      console.error(
+        "Settings save failed:",
+        error
+      );
+
+      showMessage(
+        error instanceof Error
+          ? error.message
+          : "Settings could not be saved.",
+        "error"
+      );
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function handleReset() {
-    const confirmed = window.confirm(
-      "Reset all settings to their default values?"
-    );
+  async function handleReset() {
+    const confirmed =
+      window.confirm(
+        "Reset all settings to their default values?"
+      );
 
     if (!confirmed) {
       return;
     }
 
-    const resetValues = resetSettings();
+    setSaving(true);
 
-    setSettings(resetValues);
-    applyTheme(resetValues.theme);
-    showMessage("Settings reset to defaults.");
-  }
-
-  function handleExportData() {
     try {
-      const backup = {
-        version: 1,
-        exportedAt: new Date().toISOString(),
-        settings: loadSettings(),
-        employees: JSON.parse(
-          window.localStorage.getItem(
-            "jobclokr-employees"
-          ) ?? "[]"
-        ),
-        projects: JSON.parse(
-          window.localStorage.getItem(
-            "jobclokr-projects"
-          ) ?? "[]"
-        ),
-        customers: JSON.parse(
-          window.localStorage.getItem(
-            "jobclokr-customers"
-          ) ?? "[]"
-        ),
-        schedule: JSON.parse(
-          window.localStorage.getItem(
-            "jobclokr-schedule"
-          ) ?? "[]"
-        ),
-        timeEntries: JSON.parse(
-          window.localStorage.getItem(
-            "jobclokr-time-entries"
-          ) ?? "[]"
-        ),
-      };
-
-      const file = new Blob(
-        [JSON.stringify(backup, null, 2)],
+      const resetValues: CompanySettings =
         {
-          type: "application/json",
-        }
+          ...defaultSettings,
+        };
+
+      const response =
+        await fetch(
+          "/api/settings",
+          {
+            method: "PUT",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body:
+              JSON.stringify({
+                companyName:
+                  resetValues.companyName,
+
+                phone:
+                  resetValues.phone,
+
+                email:
+                  resetValues.email,
+
+                website:
+                  resetValues.website,
+
+                address:
+                  resetValues.address,
+
+                defaultShiftStart:
+                  resetValues.defaultShiftStart,
+
+                defaultShiftEnd:
+                  resetValues.defaultShiftEnd,
+
+                overtimeThreshold:
+                  resetValues.overtimeThreshold,
+
+                lunchDuration:
+                  resetValues.lunchDuration,
+
+                punchRounding:
+                  resetValues.punchRounding,
+
+                gpsTrackingEnabled:
+                  resetValues.gpsTrackingEnabled,
+
+                allowEmployeePunchEdits:
+                  resetValues.allowEmployeePunchEdits,
+
+                requireClockOutNotes:
+                  resetValues.requireClockOutNotes,
+
+                clockInReminderEnabled:
+                  resetValues.clockInReminderEnabled,
+
+                missedClockOutNotification:
+                  resetValues.missedClockOutNotification,
+
+                overtimeNotification:
+                  resetValues.overtimeNotification,
+              }),
+          }
+        );
+
+      const data =
+        await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+            "Unable to reset settings."
+        );
+      }
+
+      const finalSettings: CompanySettings =
+        {
+          ...resetValues,
+          ...data,
+
+          theme:
+            resetValues.theme,
+
+          timeFormat:
+            resetValues.timeFormat,
+        };
+
+      setSettings(
+        finalSettings
       );
 
-      const url = URL.createObjectURL(file);
-      const link = document.createElement("a");
+      saveSettings(
+        finalSettings
+      );
 
-      link.href = url;
-      link.download = `jobclokr-backup-${new Date()
-        .toISOString()
-        .slice(0, 10)}.json`;
+      applyTheme(
+        finalSettings.theme
+      );
 
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-
-      URL.revokeObjectURL(url);
-
-      showMessage("Backup exported successfully.");
-    } catch {
       showMessage(
-        "Unable to export the backup.",
-        "error"
+        "Settings reset to defaults."
       );
-    }
-  }
-
-  async function handleImportFile(
-    event: React.ChangeEvent<HTMLInputElement>
-  ) {
-    const file = event.target.files?.[0];
-
-    if (!file) {
-      return;
-    }
-
-    try {
-      const text = await file.text();
-
-      const backup = JSON.parse(text) as {
-        settings?: Partial<CompanySettings>;
-        employees?: unknown[];
-        projects?: unknown[];
-        customers?: unknown[];
-        schedule?: unknown[];
-        timeEntries?: unknown[];
-      };
-
-      const confirmed = window.confirm(
-        "Importing this backup will replace your current local JobClokr data. Continue?"
+    } catch (error) {
+      console.error(
+        "Settings reset failed:",
+        error
       );
-
-      if (!confirmed) {
-        event.target.value = "";
-        return;
-      }
-
-      if (backup.employees) {
-        window.localStorage.setItem(
-          "jobclokr-employees",
-          JSON.stringify(backup.employees)
-        );
-      }
-
-      if (backup.projects) {
-        window.localStorage.setItem(
-          "jobclokr-projects",
-          JSON.stringify(backup.projects)
-        );
-      }
-
-      if (backup.customers) {
-        window.localStorage.setItem(
-          "jobclokr-customers",
-          JSON.stringify(backup.customers)
-        );
-      }
-
-      if (backup.schedule) {
-        window.localStorage.setItem(
-          "jobclokr-schedule",
-          JSON.stringify(backup.schedule)
-        );
-      }
-
-      if (backup.timeEntries) {
-        window.localStorage.setItem(
-          "jobclokr-time-entries",
-          JSON.stringify(backup.timeEntries)
-        );
-      }
-
-      const importedSettings: CompanySettings = {
-        ...defaultSettings,
-        ...(backup.settings ?? {}),
-      };
-
-      saveSettings(importedSettings);
-      applyTheme(importedSettings.theme);
-      setSettings(importedSettings);
 
       showMessage(
-        "Backup imported successfully. Refreshing..."
-      );
-
-      window.setTimeout(() => {
-        window.location.reload();
-      }, 800);
-    } catch {
-      showMessage(
-        "That file is not a valid JobClokr backup.",
+        error instanceof Error
+          ? error.message
+          : "Settings could not be reset.",
         "error"
       );
     } finally {
-      event.target.value = "";
+      setSaving(false);
     }
   }
 
-  if (!settingsLoaded) {
+  if (
+    !settingsLoaded
+  ) {
     return (
       <AppLayout>
         <p className="text-gray-500 dark:text-slate-400">
@@ -302,23 +517,31 @@ export default function SettingsPage() {
             </h1>
 
             <p className="mt-1 text-gray-500 dark:text-slate-400">
-              Configure company, timekeeping, and employee options.
+              Configure company,
+              timekeeping, and
+              employee options.
             </p>
           </div>
 
           <button
             type="button"
-            onClick={handleSave}
-            className="rounded-lg bg-blue-600 px-5 py-3 font-medium text-white hover:bg-blue-700"
+            onClick={() =>
+              void handleSave()
+            }
+            disabled={saving}
+            className="rounded-lg bg-blue-600 px-5 py-3 font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Save Settings
+            {saving
+              ? "Saving..."
+              : "Save Settings"}
           </button>
         </div>
 
         {message && (
           <div
             className={`rounded-lg border px-4 py-3 ${
-              messageType === "success"
+              messageType ===
+              "success"
                 ? "border-green-300 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200"
                 : "border-red-300 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200"
             }`}
@@ -327,7 +550,11 @@ export default function SettingsPage() {
           </div>
         )}
 
-        <section className={sectionClass}>
+        <section
+          className={
+            sectionClass
+          }
+        >
           <h2 className="text-2xl font-semibold">
             Company Information
           </h2>
@@ -336,63 +563,96 @@ export default function SettingsPage() {
             <input
               type="text"
               placeholder="Company Name"
-              value={settings.companyName}
-              onChange={(event) =>
+              value={
+                settings.companyName
+              }
+              onChange={(
+                event
+              ) =>
                 updateSetting(
                   "companyName",
-                  event.target.value
+                  event.target
+                    .value
                 )
               }
-              className={inputClass}
+              className={
+                inputClass
+              }
             />
 
             <input
               type="tel"
               placeholder="Phone"
-              value={settings.phone}
-              onChange={(event) =>
+              value={
+                settings.phone
+              }
+              onChange={(
+                event
+              ) =>
                 updateSetting(
                   "phone",
-                  event.target.value
+                  event.target
+                    .value
                 )
               }
-              className={inputClass}
+              className={
+                inputClass
+              }
             />
 
             <input
               type="email"
               placeholder="Email"
-              value={settings.email}
-              onChange={(event) =>
+              value={
+                settings.email
+              }
+              onChange={(
+                event
+              ) =>
                 updateSetting(
                   "email",
-                  event.target.value
+                  event.target
+                    .value
                 )
               }
-              className={inputClass}
+              className={
+                inputClass
+              }
             />
 
             <input
               type="url"
               placeholder="Website"
-              value={settings.website}
-              onChange={(event) =>
+              value={
+                settings.website
+              }
+              onChange={(
+                event
+              ) =>
                 updateSetting(
                   "website",
-                  event.target.value
+                  event.target
+                    .value
                 )
               }
-              className={inputClass}
+              className={
+                inputClass
+              }
             />
 
             <input
               type="text"
               placeholder="Company Address"
-              value={settings.address}
-              onChange={(event) =>
+              value={
+                settings.address
+              }
+              onChange={(
+                event
+              ) =>
                 updateSetting(
                   "address",
-                  event.target.value
+                  event.target
+                    .value
                 )
               }
               className={`${inputClass} md:col-span-2`}
@@ -400,7 +660,11 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        <section className={sectionClass}>
+        <section
+          className={
+            sectionClass
+          }
+        >
           <h2 className="text-2xl font-semibold">
             Time Tracking
           </h2>
@@ -413,14 +677,22 @@ export default function SettingsPage() {
 
               <input
                 type="time"
-                value={settings.defaultShiftStart}
-                onChange={(event) =>
+                value={
+                  settings.defaultShiftStart
+                }
+                onChange={(
+                  event
+                ) =>
                   updateSetting(
                     "defaultShiftStart",
-                    event.target.value
+                    event
+                      .target
+                      .value
                   )
                 }
-                className={inputClass}
+                className={
+                  inputClass
+                }
               />
             </label>
 
@@ -431,52 +703,82 @@ export default function SettingsPage() {
 
               <input
                 type="time"
-                value={settings.defaultShiftEnd}
-                onChange={(event) =>
+                value={
+                  settings.defaultShiftEnd
+                }
+                onChange={(
+                  event
+                ) =>
                   updateSetting(
                     "defaultShiftEnd",
-                    event.target.value
+                    event
+                      .target
+                      .value
                   )
                 }
-                className={inputClass}
+                className={
+                  inputClass
+                }
               />
             </label>
 
             <label>
               <span className="mb-1 block text-sm font-medium">
-                Weekly Overtime Threshold
+                Weekly Overtime
+                Threshold
               </span>
 
               <input
                 type="number"
                 min={0}
-                value={settings.overtimeThreshold}
-                onChange={(event) =>
+                value={
+                  settings.overtimeThreshold
+                }
+                onChange={(
+                  event
+                ) =>
                   updateSetting(
                     "overtimeThreshold",
-                    Number(event.target.value)
+                    Number(
+                      event
+                        .target
+                        .value
+                    )
                   )
                 }
-                className={inputClass}
+                className={
+                  inputClass
+                }
               />
             </label>
 
             <label>
               <span className="mb-1 block text-sm font-medium">
-                Lunch Duration (minutes)
+                Lunch Duration
+                (minutes)
               </span>
 
               <input
                 type="number"
                 min={0}
-                value={settings.lunchDuration}
-                onChange={(event) =>
+                value={
+                  settings.lunchDuration
+                }
+                onChange={(
+                  event
+                ) =>
                   updateSetting(
                     "lunchDuration",
-                    Number(event.target.value)
+                    Number(
+                      event
+                        .target
+                        .value
+                    )
                   )
                 }
-                className={inputClass}
+                className={
+                  inputClass
+                }
               />
             </label>
 
@@ -486,26 +788,48 @@ export default function SettingsPage() {
               </span>
 
               <select
-                value={settings.punchRounding}
-                onChange={(event) =>
+                value={
+                  settings.punchRounding
+                }
+                onChange={(
+                  event
+                ) =>
                   updateSetting(
                     "punchRounding",
-                    event.target
+                    event
+                      .target
                       .value as CompanySettings["punchRounding"]
                   )
                 }
-                className={inputClass}
+                className={
+                  inputClass
+                }
               >
-                <option>None</option>
-                <option>5 Minutes</option>
-                <option>10 Minutes</option>
-                <option>15 Minutes</option>
+                <option>
+                  None
+                </option>
+
+                <option>
+                  5 Minutes
+                </option>
+
+                <option>
+                  10 Minutes
+                </option>
+
+                <option>
+                  15 Minutes
+                </option>
               </select>
             </label>
           </div>
         </section>
 
-        <section className={sectionClass}>
+        <section
+          className={
+            sectionClass
+          }
+        >
           <h2 className="text-2xl font-semibold">
             Employee Options
           </h2>
@@ -514,8 +838,12 @@ export default function SettingsPage() {
             <SettingToggle
               label="Enable GPS tracking"
               description="Allow JobClokr to request location during clock events."
-              checked={settings.gpsTrackingEnabled}
-              onChange={(checked) =>
+              checked={
+                settings.gpsTrackingEnabled
+              }
+              onChange={(
+                checked
+              ) =>
                 updateSetting(
                   "gpsTrackingEnabled",
                   checked
@@ -526,8 +854,12 @@ export default function SettingsPage() {
             <SettingToggle
               label="Allow employees to edit punches"
               description="Employees may request or make corrections to their punches."
-              checked={settings.allowEmployeePunchEdits}
-              onChange={(checked) =>
+              checked={
+                settings.allowEmployeePunchEdits
+              }
+              onChange={(
+                checked
+              ) =>
                 updateSetting(
                   "allowEmployeePunchEdits",
                   checked
@@ -538,8 +870,12 @@ export default function SettingsPage() {
             <SettingToggle
               label="Require notes when clocking out"
               description="Employees must enter a work note before clocking out."
-              checked={settings.requireClockOutNotes}
-              onChange={(checked) =>
+              checked={
+                settings.requireClockOutNotes
+              }
+              onChange={(
+                checked
+              ) =>
                 updateSetting(
                   "requireClockOutNotes",
                   checked
@@ -549,46 +885,86 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        <section className={sectionClass}>
+        <section
+          className={
+            sectionClass
+          }
+        >
           <h2 className="text-2xl font-semibold">
             Appearance
           </h2>
 
+          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
+            Appearance settings
+            apply to this device.
+          </p>
+
           <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
             <select
-              value={settings.theme}
-              onChange={(event) =>
+              value={
+                settings.theme
+              }
+              onChange={(
+                event
+              ) =>
                 updateSetting(
                   "theme",
-                  event.target
+                  event
+                    .target
                     .value as CompanySettings["theme"]
                 )
               }
-              className={inputClass}
+              className={
+                inputClass
+              }
             >
-              <option>Light</option>
-              <option>Dark</option>
-              <option>System</option>
+              <option>
+                Light
+              </option>
+
+              <option>
+                Dark
+              </option>
+
+              <option>
+                System
+              </option>
             </select>
 
             <select
-              value={settings.timeFormat}
-              onChange={(event) =>
+              value={
+                settings.timeFormat
+              }
+              onChange={(
+                event
+              ) =>
                 updateSetting(
                   "timeFormat",
-                  event.target
+                  event
+                    .target
                     .value as CompanySettings["timeFormat"]
                 )
               }
-              className={inputClass}
+              className={
+                inputClass
+              }
             >
-              <option>12 Hour</option>
-              <option>24 Hour</option>
+              <option>
+                12 Hour
+              </option>
+
+              <option>
+                24 Hour
+              </option>
             </select>
           </div>
         </section>
 
-        <section className={sectionClass}>
+        <section
+          className={
+            sectionClass
+          }
+        >
           <h2 className="text-2xl font-semibold">
             Notifications
           </h2>
@@ -596,9 +972,13 @@ export default function SettingsPage() {
           <div className="mt-5 space-y-3">
             <SettingToggle
               label="Clock-in reminders"
-              description="Save the preference for scheduled clock-in reminders."
-              checked={settings.clockInReminderEnabled}
-              onChange={(checked) =>
+              description="Enable scheduled clock-in reminders."
+              checked={
+                settings.clockInReminderEnabled
+              }
+              onChange={(
+                checked
+              ) =>
                 updateSetting(
                   "clockInReminderEnabled",
                   checked
@@ -608,9 +988,13 @@ export default function SettingsPage() {
 
             <SettingToggle
               label="Missed clock-out alerts"
-              description="Save the preference for missed clock-out warnings."
-              checked={settings.missedClockOutNotification}
-              onChange={(checked) =>
+              description="Enable missed clock-out warnings."
+              checked={
+                settings.missedClockOutNotification
+              }
+              onChange={(
+                checked
+              ) =>
                 updateSetting(
                   "missedClockOutNotification",
                   checked
@@ -620,9 +1004,13 @@ export default function SettingsPage() {
 
             <SettingToggle
               label="Overtime alerts"
-              description="Save the preference for overtime warnings."
-              checked={settings.overtimeNotification}
-              onChange={(checked) =>
+              description="Enable overtime warnings."
+              checked={
+                settings.overtimeNotification
+              }
+              onChange={(
+                checked
+              ) =>
                 updateSetting(
                   "overtimeNotification",
                   checked
@@ -632,46 +1020,30 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        <section className={sectionClass}>
+        <section
+          className={
+            sectionClass
+          }
+        >
           <h2 className="text-2xl font-semibold">
-            Data Management
+            Settings Management
           </h2>
 
           <p className="mt-2 text-gray-500 dark:text-slate-400">
-            Export or restore the browser&apos;s local JobClokr data.
+            Reset JobClokr
+            preferences and
+            company settings to
+            their default values.
           </p>
 
-          <input
-            ref={importInputRef}
-            type="file"
-            accept="application/json,.json"
-            onChange={handleImportFile}
-            className="hidden"
-          />
-
-          <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-            <button
-              type="button"
-              onClick={handleExportData}
-              className="rounded-lg bg-slate-800 px-5 py-3 font-medium text-white hover:bg-slate-900"
-            >
-              Export Backup
-            </button>
-
+          <div className="mt-5">
             <button
               type="button"
               onClick={() =>
-                importInputRef.current?.click()
+                void handleReset()
               }
-              className="rounded-lg bg-blue-600 px-5 py-3 font-medium text-white hover:bg-blue-700"
-            >
-              Import Backup
-            </button>
-
-            <button
-              type="button"
-              onClick={handleReset}
-              className="rounded-lg border border-red-300 px-5 py-3 font-medium text-red-600 hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-950"
+              disabled={saving}
+              className="rounded-lg border border-red-300 px-5 py-3 font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-800 dark:hover:bg-red-950"
             >
               Reset Settings
             </button>

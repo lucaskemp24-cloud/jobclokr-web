@@ -5,7 +5,6 @@ import { usePathname, useRouter } from "next/navigation";
 
 import Sidebar from "@/components/layout/Sidebar";
 import TopBar from "@/components/layout/TopBar";
-import { ToastProvider } from "@/components/ui/ToastProvider";
 
 import {
   isOfficeUser,
@@ -125,18 +124,16 @@ export default function AppLayout({
   }
 
   return (
-    <ToastProvider>
-      <div className="flex min-h-screen bg-slate-100 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100">
-        <Sidebar />
+    <div className="flex min-h-screen bg-slate-100 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100">
+      <Sidebar />
 
-        <div className="flex min-w-0 flex-1 flex-col">
-          <TopBar />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <TopBar />
 
-          <main className="flex-1 p-6">
-            {children}
-          </main>
-        </div>
+        <main className="flex-1 p-6">
+          {children}
+        </main>
       </div>
-    </ToastProvider>
+    </div>
   );
 }

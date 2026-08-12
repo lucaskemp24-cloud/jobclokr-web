@@ -1,10 +1,21 @@
-import {
-  getEmployeeName,
-  loadEmployees,
-  type Employee,
-} from "@/lib/employees";
+export type UserRole =
+  | "Owner"
+  | "Office"
+  | "Employee";
 
-export type UserRole = "Owner" | "Office" | "Employee";
+export type DatabaseEmployeeRole =
+  | "OWNER"
+  | "OFFICE"
+  | "FOREMAN"
+  | "EMPLOYEE";
+
+export type LoginEmployee = {
+  id: number;
+  firstName: string;
+  lastName: string;
+  role: DatabaseEmployeeRole;
+  active: boolean;
+};
 
 export type AuthUser = {
   employeeId: number;
@@ -12,65 +23,102 @@ export type AuthUser = {
   role: UserRole;
 };
 
-const AUTH_STORAGE_KEY = "jobclokr-auth-user";
+const AUTH_STORAGE_KEY =
+  "jobclokr-auth-user";
 
-function getRole(employee: Employee): UserRole {
-  const position = employee.position.toLowerCase();
+function getEmployeeName(
+  employee: LoginEmployee
+) {
+  return `${employee.firstName} ${employee.lastName}`.trim();
+}
 
-  if (position === "owner") {
+function getRole(
+  employee: LoginEmployee
+): UserRole {
+  if (employee.role === "OWNER") {
     return "Owner";
   }
 
-  if (position === "office") {
+  if (employee.role === "OFFICE") {
     return "Office";
   }
 
+  // Foremen use the field/employee portal for now.
   return "Employee";
 }
 
-export function loadAuthUser(): AuthUser | null {
+export function loadAuthUser():
+  | AuthUser
+  | null {
   if (typeof window === "undefined") {
     return null;
   }
 
-  const savedUser = window.localStorage.getItem(
-    AUTH_STORAGE_KEY
-  );
+  const savedUser =
+    window.localStorage.getItem(
+      AUTH_STORAGE_KEY
+    );
 
   if (!savedUser) {
     return null;
   }
 
   try {
-    return JSON.parse(savedUser) as AuthUser;
+    const parsedUser =
+      JSON.parse(savedUser) as Partial<AuthUser>;
+
+    if (
+      typeof parsedUser.employeeId !==
+        "number" ||
+      typeof parsedUser.name !==
+        "string" ||
+      (
+        parsedUser.role !== "Owner" &&
+        parsedUser.role !== "Office" &&
+        parsedUser.role !== "Employee"
+      )
+    ) {
+      window.localStorage.removeItem(
+        AUTH_STORAGE_KEY
+      );
+
+      return null;
+    }
+
+    return {
+      employeeId:
+        parsedUser.employeeId,
+      name:
+        parsedUser.name,
+      role:
+        parsedUser.role,
+    };
   } catch {
+    window.localStorage.removeItem(
+      AUTH_STORAGE_KEY
+    );
+
     return null;
   }
 }
 
 export function loginEmployee(
-  employeeId: number
+  employee: LoginEmployee
 ): AuthUser | null {
   if (typeof window === "undefined") {
     return null;
   }
 
-  const employees = loadEmployees();
-
-  const employee = employees.find(
-    (savedEmployee) =>
-      savedEmployee.id === employeeId &&
-      savedEmployee.status === "Active"
-  );
-
-  if (!employee) {
+  if (!employee.active) {
     return null;
   }
 
   const authUser: AuthUser = {
     employeeId: employee.id,
-    name: getEmployeeName(employee),
-    role: getRole(employee),
+    name:
+      getEmployeeName(employee),
+    role:
+      getRole(employee),
   };
 
   window.localStorage.setItem(
@@ -86,9 +134,16 @@ export function logoutUser() {
     return;
   }
 
-  window.localStorage.removeItem(AUTH_STORAGE_KEY);
+  window.localStorage.removeItem(
+    AUTH_STORAGE_KEY
+  );
 }
 
-export function isOfficeUser(user: AuthUser | null) {
-  return user?.role === "Owner" || user?.role === "Office";
+export function isOfficeUser(
+  user: AuthUser | null
+) {
+  return (
+    user?.role === "Owner" ||
+    user?.role === "Office"
+  );
 }
