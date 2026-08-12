@@ -2,6 +2,7 @@
 
 import {
   ChangeEvent,
+  Suspense,
   useEffect,
   useMemo,
   useRef,
@@ -163,7 +164,7 @@ function getDocumentIcon(
   return "📄";
 }
 
-export default function EmployeeDocumentsPage() {
+function EmployeeDocumentsContent() {
   const router =
     useRouter();
 
@@ -860,5 +861,27 @@ export default function EmployeeDocumentsPage() {
         />
       </div>
     </EmployeeLayout>
+  );
+}
+
+export default function EmployeeDocumentsPage() {
+  return (
+    <Suspense
+      fallback={
+        <EmployeeLayout>
+          <div className="mx-auto flex min-h-[70vh] max-w-xl items-center justify-center">
+            <div className="w-full rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <div className="mx-auto h-9 w-9 animate-spin rounded-full border-4 border-blue-600 border-r-transparent" />
+
+              <p className="mt-4 text-slate-500 dark:text-slate-400">
+                Loading documents...
+              </p>
+            </div>
+          </div>
+        </EmployeeLayout>
+      }
+    >
+      <EmployeeDocumentsContent />
+    </Suspense>
   );
 }

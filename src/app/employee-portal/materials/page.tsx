@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Suspense,
   useEffect,
   useMemo,
   useState,
@@ -69,7 +70,7 @@ function formatDate(dateValue: string) {
   });
 }
 
-export default function EmployeeMaterialsPage() {
+function EmployeeMaterialsContent() {
   const router = useRouter();
   const searchParams =
     useSearchParams();
@@ -749,5 +750,27 @@ export default function EmployeeMaterialsPage() {
         </section>
       </div>
     </EmployeeLayout>
+  );
+}
+
+export default function EmployeeMaterialsPage() {
+  return (
+    <Suspense
+      fallback={
+        <EmployeeLayout>
+          <div className="mx-auto flex min-h-[70vh] max-w-xl items-center justify-center">
+            <div className="w-full rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <div className="mx-auto h-9 w-9 animate-spin rounded-full border-4 border-blue-600 border-r-transparent" />
+
+              <p className="mt-4 text-slate-500 dark:text-slate-400">
+                Loading materials...
+              </p>
+            </div>
+          </div>
+        </EmployeeLayout>
+      }
+    >
+      <EmployeeMaterialsContent />
+    </Suspense>
   );
 }
