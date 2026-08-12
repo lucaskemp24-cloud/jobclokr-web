@@ -3,6 +3,8 @@ import Link from "next/link";
 import AppLayout from "@/components/layout/AppLayout";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 export default async function EmployeesPage() {
   const company = await prisma.company.findFirst({
     include: {
@@ -24,9 +26,9 @@ export default async function EmployeesPage() {
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-4xl font-bold">
+            <h1 className="text-3xl font-bold">
               Employees
             </h1>
 
