@@ -1,27 +1,65 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
 
 import AppLayout from "@/components/layout/AppLayout";
-import { prisma } from "@/lib/prisma";
 
-export const dynamic = "force-dynamic";
+type DatabaseEmployee = {
+  id: number;
+  companyId: number;
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  phone: string | null;
+  role: "OWNER" | "OFFICE" | "FOREMAN" | "EMPLOYEE";
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
 
-export default async function EmployeesPage() {
-  const company = await prisma.company.findFirst({
-    include: {
-      employees: {
-        orderBy: [
-          {
-            lastName: "asc",
-          },
-          {
-            firstName: "asc",
-          },
-        ],
-      },
-    },
-  });
+export default function EmployeesPage() {
+  const [employees, setEmployees] = useState<DatabaseEmployee[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
-  const employees = company?.employees ?? [];
+  useEffect(() => {
+    async function loadEmployees() {
+      try {
+        setLoading(true);
+        setLoadError("");
+
+        const response = await fetch("/api/employees", {
+          cache: "no-store",
+        });
+
+        if (!response.ok) {
+          throw new Error("Unable to load employees.");
+        }
+
+        const data = await response.json();
+
+        setEmployees(
+          Array.isArray(data)
+            ? data
+            : []
+        );
+      } catch (error) {
+        console.error(
+          "Employees database load failed:",
+          error
+        );
+
+        setLoadError(
+          "Unable to load employees."
+        );
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    void loadEmployees();
+  }, []);
 
   return (
     <AppLayout>
@@ -77,7 +115,25 @@ export default async function EmployeesPage() {
               </thead>
 
               <tbody>
-                {employees.length === 0 ? (
+                {loading ? (
+                  <tr>
+                    <td
+                      colSpan={6}
+                      className="p-8 text-center text-slate-500 dark:text-slate-400"
+                    >
+                      Loading employees...
+                    </td>
+                  </tr>
+                ) : loadError ? (
+                  <tr>
+                    <td
+                      colSpan={6}
+                      className="p-8 text-center text-red-600"
+                    >
+                      {loadError}
+                    </td>
+                  </tr>
+                ) : employees.length === 0 ? (
                   <tr>
                     <td
                       colSpan={6}
