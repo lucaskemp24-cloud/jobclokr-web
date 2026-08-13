@@ -97,6 +97,10 @@ model Employee {
   email String?
   phone String?
 
+  loginName          String?
+  passwordHash       String?
+  mustChangePassword Boolean @default(true)
+
   role   EmployeeRole @default(EMPLOYEE)
   active Boolean      @default(true)
 
@@ -113,6 +117,7 @@ model Employee {
   documents           ProjectDocument[]
   scheduleAssignments ScheduleAssignmentEmployee[]
 
+  @@unique([companyId, loginName])
   @@index([companyId])
 }
 
