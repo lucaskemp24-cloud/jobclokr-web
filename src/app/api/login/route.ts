@@ -4,8 +4,6 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createSession } from "@/lib/session";
 
-const COMPANY_ID = 1;
-
 function getSessionRole(
   role:
     | "OWNER"
@@ -31,6 +29,13 @@ export async function POST(
     const body =
       await request.json();
 
+    const companyCode =
+      String(
+        body.companyCode ?? ""
+      )
+        .trim()
+        .toUpperCase();
+
     const loginName =
       String(
         body.loginName ?? ""
@@ -43,14 +48,43 @@ export async function POST(
         body.password ?? ""
       );
 
-    if (!loginName || !password) {
+    if (
+      !companyCode ||
+      !loginName ||
+      !password
+    ) {
       return NextResponse.json(
         {
           error:
-            "Login name and password are required.",
+            "Company code, login name, and password are required.",
         },
         {
           status: 400,
+        }
+      );
+    }
+
+    const company =
+      await prisma.company.findUnique({
+        where: {
+          code: companyCode,
+        },
+
+        select: {
+          id: true,
+          name: true,
+          code: true,
+        },
+      });
+
+    if (!company) {
+      return NextResponse.json(
+        {
+          error:
+            "Invalid company code, login name, or password.",
+        },
+        {
+          status: 401,
         }
       );
     }
@@ -59,7 +93,7 @@ export async function POST(
       await prisma.employee.findFirst({
         where: {
           companyId:
-            COMPANY_ID,
+            company.id,
 
           loginName,
         },
@@ -84,7 +118,7 @@ export async function POST(
       return NextResponse.json(
         {
           error:
-            "Invalid login name or password.",
+            "Invalid company code, login name, or password.",
         },
         {
           status: 401,
@@ -102,7 +136,7 @@ export async function POST(
       return NextResponse.json(
         {
           error:
-            "Invalid login name or password.",
+            "Invalid company code, login name, or password.",
         },
         {
           status: 401,
@@ -130,16 +164,37 @@ export async function POST(
 
     return NextResponse.json({
       employee: {
-        id: employee.id,
+        id:
+          employee.id,
+
+        companyId:
+          employee.companyId,
+
         firstName:
           employee.firstName,
+
         lastName:
           employee.lastName,
-        role: employee.role,
+
+        role:
+          employee.role,
+
         active:
           employee.active,
+
         mustChangePassword:
           employee.mustChangePassword,
+      },
+
+      company: {
+        id:
+          company.id,
+
+        name:
+          company.name,
+
+        code:
+          company.code,
       },
     });
   } catch (error) {

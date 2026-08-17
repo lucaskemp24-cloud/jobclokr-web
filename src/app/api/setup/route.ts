@@ -2,10 +2,21 @@ import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
 
+const DEFAULT_COMPANY_NAME =
+  "Lucas Communications";
+
+const DEFAULT_COMPANY_CODE =
+  "LUCAS";
+
 export async function GET() {
   try {
     const existingCompany =
-      await prisma.company.findFirst();
+      await prisma.company.findFirst({
+        where: {
+          code:
+            DEFAULT_COMPANY_CODE,
+        },
+      });
 
     if (existingCompany) {
       return NextResponse.json({
@@ -21,7 +32,10 @@ export async function GET() {
       await prisma.company.create({
         data: {
           name:
-            "Lucas Communications",
+            DEFAULT_COMPANY_NAME,
+
+          code:
+            DEFAULT_COMPANY_CODE,
         },
       });
 

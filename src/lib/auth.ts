@@ -11,6 +11,7 @@ export type DatabaseEmployeeRole =
 
 export type LoginEmployee = {
   id: number;
+  companyId: number;
   firstName: string;
   lastName: string;
   role: DatabaseEmployeeRole;
@@ -19,6 +20,7 @@ export type LoginEmployee = {
 
 export type AuthUser = {
   employeeId: number;
+  companyId: number;
   name: string;
   role: UserRole;
 };
@@ -65,10 +67,13 @@ export function loadAuthUser():
 
   try {
     const parsedUser =
-      JSON.parse(savedUser) as Partial<AuthUser>;
+      JSON.parse(savedUser) as
+        Partial<AuthUser>;
 
     if (
       typeof parsedUser.employeeId !==
+        "number" ||
+      typeof parsedUser.companyId !==
         "number" ||
       typeof parsedUser.name !==
         "string" ||
@@ -88,8 +93,13 @@ export function loadAuthUser():
     return {
       employeeId:
         parsedUser.employeeId,
+
+      companyId:
+        parsedUser.companyId,
+
       name:
         parsedUser.name,
+
       role:
         parsedUser.role,
     };
@@ -114,9 +124,15 @@ export function loginEmployee(
   }
 
   const authUser: AuthUser = {
-    employeeId: employee.id,
+    employeeId:
+      employee.id,
+
+    companyId:
+      employee.companyId,
+
     name:
       getEmployeeName(employee),
+
     role:
       getRole(employee),
   };

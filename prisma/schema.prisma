@@ -23,6 +23,7 @@ enum AssignmentPriority {
 model Company {
   id        Int      @id @default(autoincrement())
   name      String
+  code      String   @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -117,7 +118,7 @@ model Employee {
   photos              JobPhoto[]
   documents           ProjectDocument[]
   scheduleAssignments ScheduleAssignmentEmployee[]
-  markedInvoices      ProjectInvoiceStatus[]       @relation("InvoiceMarkedByEmployee")
+  markedInvoices      ProjectInvoiceStatus[] @relation("InvoiceMarkedByEmployee")
 
   @@unique([companyId, loginName])
   @@index([companyId])
@@ -131,7 +132,7 @@ model Project {
   name        String
   description String?
   address     String?
-  status      String  @default("Scheduled")
+  status      String @default("Scheduled")
 
   startDate DateTime?
   dueDate   DateTime?

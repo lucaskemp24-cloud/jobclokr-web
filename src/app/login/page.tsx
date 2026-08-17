@@ -19,6 +19,12 @@ type LoginResponse = {
   employee: LoginEmployee & {
     mustChangePassword: boolean;
   };
+
+  company: {
+    id: number;
+    name: string;
+    code: string;
+  };
 };
 
 type SessionUser = {
@@ -40,14 +46,25 @@ export default function LoginPage() {
   const router = useRouter();
   const { showToast } = useToast();
 
-  const [loginName, setLoginName] =
-    useState("");
+  const [
+    companyCode,
+    setCompanyCode,
+  ] = useState("");
 
-  const [password, setPassword] =
-    useState("");
+  const [
+    loginName,
+    setLoginName,
+  ] = useState("");
 
-  const [signingIn, setSigningIn] =
-    useState(false);
+  const [
+    password,
+    setPassword,
+  ] = useState("");
+
+  const [
+    signingIn,
+    setSigningIn,
+  ] = useState(false);
 
   const [
     checkingSession,
@@ -83,15 +100,12 @@ export default function LoginPage() {
           data.authenticated &&
           data.user
         ) {
-          /*
-            Only automatically redirect if
-            the browser/app's saved user
-            matches the real server session.
-          */
           if (
             savedUser &&
             savedUser.employeeId ===
               data.user.employeeId &&
+            savedUser.companyId ===
+              data.user.companyId &&
             savedUser.role ===
               data.user.role
           ) {
@@ -109,28 +123,8 @@ export default function LoginPage() {
             return;
           }
 
-          /*
-            The server has a session but
-            localStorage does not match.
-
-            Clear the stale local copy.
-            The user can sign in again
-            cleanly rather than entering
-            a redirect loop.
-          */
           logoutUser();
         } else {
-          /*
-            THIS IS THE IMPORTANT FIX.
-
-            If /api/session says the user
-            is not authenticated, remove
-            the old localStorage login.
-
-            Otherwise /login would keep
-            sending the stale employee
-            back to /employee-portal.
-          */
           logoutUser();
         }
       } catch (error) {
@@ -139,11 +133,6 @@ export default function LoginPage() {
           error
         );
 
-        /*
-          If we cannot confirm a valid
-          server session, do not trust
-          stale local authentication.
-        */
         logoutUser();
       } finally {
         if (!cancelled) {
@@ -162,10 +151,24 @@ export default function LoginPage() {
   }, [router]);
 
   async function handleLogin() {
+    const trimmedCompanyCode =
+      companyCode
+        .trim()
+        .toUpperCase();
+
     const trimmedLoginName =
       loginName
         .trim()
         .toLowerCase();
+
+    if (!trimmedCompanyCode) {
+      showToast(
+        "Please enter your company code.",
+        "error"
+      );
+
+      return;
+    }
 
     if (!trimmedLoginName) {
       showToast(
@@ -188,10 +191,6 @@ export default function LoginPage() {
     try {
       setSigningIn(true);
 
-      /*
-        Clear any old client-side user
-        before creating a new session.
-      */
       logoutUser();
 
       const response =
@@ -207,6 +206,9 @@ export default function LoginPage() {
 
             body:
               JSON.stringify({
+                companyCode:
+                  trimmedCompanyCode,
+
                 loginName:
                   trimmedLoginName,
 
@@ -252,11 +254,6 @@ export default function LoginPage() {
         );
       }
 
-      /*
-        Verify that the server actually
-        accepted and stored the session
-        cookie before navigating away.
-      */
       const sessionResponse =
         await fetch(
           "/api/session",
@@ -278,6 +275,21 @@ export default function LoginPage() {
 
         throw new Error(
           "Your login was accepted, but the session could not be saved. Please try again."
+        );
+      }
+
+      if (
+        sessionData.user.employeeId !==
+          user.employeeId ||
+        sessionData.user.companyId !==
+          user.companyId ||
+        sessionData.user.role !==
+          user.role
+      ) {
+        logoutUser();
+
+        throw new Error(
+          "The saved session did not match the selected company. Please sign in again."
         );
       }
 
@@ -337,11 +349,41 @@ export default function LoginPage() {
           </h1>
 
           <p className="mt-2 text-slate-500 dark:text-slate-400">
-            Sign in
+            Sign in to your company
           </p>
         </div>
 
         <div className="space-y-5">
+          <div>
+            <label className="mb-2 block font-medium">
+              Company Code
+            </label>
+
+            <input
+              type="text"
+              value={companyCode}
+              disabled={signingIn}
+              onChange={(event) =>
+                setCompanyCode(
+                  event.target.value
+                )
+              }
+              onKeyDown={(event) => {
+                if (
+                  event.key ===
+                  "Enter"
+                ) {
+                  void handleLogin();
+                }
+              }}
+              className="w-full rounded-lg border p-3 uppercase dark:bg-slate-950"
+              placeholder="Example: LUCAS"
+              autoCapitalize="characters"
+              autoCorrect="off"
+              autoComplete="organization"
+            />
+          </div>
+
           <div>
             <label className="mb-2 block font-medium">
               Login Name
@@ -412,6 +454,16 @@ export default function LoginPage() {
               ? "Signing In..."
               : "Sign In"}
           </button>
+
+          <p className="text-center text-sm text-slate-500 dark:text-slate-400">
+            New to JobClokr?{" "}
+            <a
+              href="/signup"
+              className="font-semibold text-blue-600 hover:underline"
+            >
+              Create Business Account
+            </a>
+          </p>
         </div>
       </div>
     </main>
