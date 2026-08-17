@@ -31,6 +31,7 @@ model Company {
   projects            Project[]
   scheduleAssignments ScheduleAssignment[]
   settings            CompanySettings?
+  invoiceStatuses     ProjectInvoiceStatus[]
 }
 
 model CompanySettings {
@@ -116,6 +117,7 @@ model Employee {
   photos              JobPhoto[]
   documents           ProjectDocument[]
   scheduleAssignments ScheduleAssignmentEmployee[]
+  markedInvoices      ProjectInvoiceStatus[]       @relation("InvoiceMarkedByEmployee")
 
   @@unique([companyId, loginName])
   @@index([companyId])
@@ -129,7 +131,7 @@ model Project {
   name        String
   description String?
   address     String?
-  status      String @default("Scheduled")
+  status      String  @default("Scheduled")
 
   startDate DateTime?
   dueDate   DateTime?
@@ -148,6 +150,7 @@ model Project {
   photos              JobPhoto[]
   documents           ProjectDocument[]
   scheduleAssignments ScheduleAssignment[]
+  invoiceStatuses     ProjectInvoiceStatus[]
 
   @@index([companyId])
   @@index([customerId])
@@ -208,7 +211,8 @@ model TimeEntry {
   clockIn  DateTime
   clockOut DateTime?
 
-  notes String?
+  notes            String?
+  manuallyAdjusted Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -295,4 +299,32 @@ model ProjectDocument {
   @@index([projectId])
   @@index([employeeId])
   @@index([createdAt])
+}
+
+model ProjectInvoiceStatus {
+  id        Int @id @default(autoincrement())
+  companyId Int
+  projectId Int
+
+  startDate DateTime @db.Date
+  endDate   DateTime @db.Date
+
+  invoiced   Boolean   @default(false)
+  invoicedAt DateTime?
+
+  markedByEmployeeId Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  markedByEmployee Employee? @relation("InvoiceMarkedByEmployee", fields: [markedByEmployeeId], references: [id], onDelete: SetNull)
+
+  @@unique([companyId, projectId, startDate, endDate])
+  @@index([companyId])
+  @@index([projectId])
+  @@index([startDate, endDate])
+  @@index([markedByEmployeeId])
 }

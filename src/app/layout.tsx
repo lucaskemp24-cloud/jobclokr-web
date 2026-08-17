@@ -1,5 +1,9 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import {
+  Geist,
+  Geist_Mono,
+} from "next/font/google";
+
 import "./globals.css";
 
 import { ToastProvider } from "@/components/ui/ToastProvider";
@@ -16,7 +20,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "JobClokr",
-  description: "Time Tracking for Trade Businesses",
+  description:
+    "Time Tracking for Trade Businesses",
 };
 
 export default function RootLayout({
@@ -27,9 +32,10 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      <body className="flex min-h-full flex-col">
         <ToastProvider>
           {children}
         </ToastProvider>

@@ -660,93 +660,171 @@ export default function ProjectLabor({
         </div>
 
         {projectEntries.length > 0 ? (
-          <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[850px]">
-                <thead className="bg-slate-100 dark:bg-slate-800">
-                  <tr>
-                    <th className="p-4 text-left">
-                      Employee
-                    </th>
-
-                    <th className="p-4 text-left">
-                      Date
-                    </th>
-
-                    <th className="p-4 text-left">
-                      Clock In
-                    </th>
-
-                    <th className="p-4 text-left">
-                      Clock Out
-                    </th>
-
-                    <th className="p-4 text-left">
-                      Hours
-                    </th>
-
-                    <th className="p-4 text-left">
-                      Status
-                    </th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {projectEntries.map(
-                    (entry) => (
-                      <tr
-                        key={entry.id}
-                        className="border-t border-slate-200 dark:border-slate-700"
-                      >
-                        <td className="p-4 font-semibold">
+          <>
+            <div className="mt-4 space-y-4 md:hidden">
+              {projectEntries.map(
+                (entry) => (
+                  <div
+                    key={entry.id}
+                    className="rounded-xl border border-slate-200 p-4 dark:border-slate-700"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-semibold">
                           {entry.employeeName}
-                        </td>
+                        </p>
 
-                        <td className="p-4">
+                        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                           {formatTimeEntryDate(
                             entry.clockIn
                           )}
-                        </td>
+                        </p>
+                      </div>
 
-                        <td className="p-4">
+                      {entry.clockOut ? (
+                        <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                          Completed
+                        </span>
+                      ) : (
+                        <span className="shrink-0 rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700 dark:bg-green-950 dark:text-green-300">
+                          Active
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-2 gap-3">
+                      <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-800">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                          Clock In
+                        </p>
+
+                        <p className="mt-1 font-semibold">
                           {formatTimeEntryTime(
                             entry.clockIn
                           )}
-                        </td>
+                        </p>
+                      </div>
 
-                        <td className="p-4">
+                      <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-800">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                          Clock Out
+                        </p>
+
+                        <p className="mt-1 font-semibold">
                           {entry.clockOut
                             ? formatTimeEntryTime(
                                 entry.clockOut
                               )
                             : "Present"}
-                        </td>
+                        </p>
+                      </div>
+                    </div>
 
-                        <td className="p-4 font-semibold">
-                          {calculateTimeEntryHours(
-                            entry,
-                            currentTime
-                          ).toFixed(2)}
-                        </td>
+                    <div className="mt-3 rounded-lg bg-blue-50 p-3 dark:bg-blue-950/40">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">
+                        Hours
+                      </p>
 
-                        <td className="p-4">
-                          {entry.clockOut ? (
-                            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                              Completed
-                            </span>
-                          ) : (
-                            <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700 dark:bg-green-950 dark:text-green-300">
-                              Active
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    )
-                  )}
-                </tbody>
-              </table>
+                      <p className="mt-1 text-xl font-bold text-blue-950 dark:text-blue-100">
+                        {calculateTimeEntryHours(
+                          entry,
+                          currentTime
+                        ).toFixed(2)}
+                      </p>
+                    </div>
+                  </div>
+                )
+              )}
             </div>
-          </div>
+
+            <div className="mt-4 hidden overflow-hidden rounded-xl border border-slate-200 md:block dark:border-slate-700">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[850px]">
+                  <thead className="bg-slate-100 dark:bg-slate-800">
+                    <tr>
+                      <th className="p-4 text-left">
+                        Employee
+                      </th>
+
+                      <th className="p-4 text-left">
+                        Date
+                      </th>
+
+                      <th className="p-4 text-left">
+                        Clock In
+                      </th>
+
+                      <th className="p-4 text-left">
+                        Clock Out
+                      </th>
+
+                      <th className="p-4 text-left">
+                        Hours
+                      </th>
+
+                      <th className="p-4 text-left">
+                        Status
+                      </th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {projectEntries.map(
+                      (entry) => (
+                        <tr
+                          key={entry.id}
+                          className="border-t border-slate-200 dark:border-slate-700"
+                        >
+                          <td className="p-4 font-semibold">
+                            {entry.employeeName}
+                          </td>
+
+                          <td className="p-4">
+                            {formatTimeEntryDate(
+                              entry.clockIn
+                            )}
+                          </td>
+
+                          <td className="p-4">
+                            {formatTimeEntryTime(
+                              entry.clockIn
+                            )}
+                          </td>
+
+                          <td className="p-4">
+                            {entry.clockOut
+                              ? formatTimeEntryTime(
+                                  entry.clockOut
+                                )
+                              : "Present"}
+                          </td>
+
+                          <td className="p-4 font-semibold">
+                            {calculateTimeEntryHours(
+                              entry,
+                              currentTime
+                            ).toFixed(2)}
+                          </td>
+
+                          <td className="p-4">
+                            {entry.clockOut ? (
+                              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                                Completed
+                              </span>
+                            ) : (
+                              <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700 dark:bg-green-950 dark:text-green-300">
+                                Active
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
         ) : (
           <div className="mt-4 rounded-xl border border-dashed border-slate-300 p-8 text-center dark:border-slate-700">
             <p className="font-semibold">

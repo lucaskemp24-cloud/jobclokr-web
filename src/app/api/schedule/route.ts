@@ -1,8 +1,52 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
+import { getSession } from "@/lib/session";
 
-const COMPANY_ID = 1;
+async function requireOfficeSession() {
+  const session =
+    await getSession();
+
+  if (!session) {
+    return {
+      session: null,
+      response:
+        NextResponse.json(
+          {
+            error:
+              "Authentication required.",
+          },
+          {
+            status: 401,
+          }
+        ),
+    };
+  }
+
+  if (
+    session.role !== "Owner" &&
+    session.role !== "Office"
+  ) {
+    return {
+      session: null,
+      response:
+        NextResponse.json(
+          {
+            error:
+              "Office access required.",
+          },
+          {
+            status: 403,
+          }
+        ),
+    };
+  }
+
+  return {
+    session,
+    response: null,
+  };
+}
 
 type AssignmentPriority =
   | "NORMAL"
@@ -62,6 +106,21 @@ export async function GET(
   request: Request
 ) {
   try {
+    const session =
+      await getSession();
+
+    if (!session) {
+      return NextResponse.json(
+        {
+          error:
+            "Authentication required.",
+        },
+        {
+          status: 401,
+        }
+      );
+    }
+
     const url = new URL(
       request.url
     );
@@ -85,7 +144,7 @@ export async function GET(
         };
       };
     } = {
-      companyId: COMPANY_ID,
+      companyId: session.companyId,
     };
 
     if (dateValue) {
@@ -109,7 +168,58 @@ export async function GET(
       where.date = date;
     }
 
-    if (employeeIdValue) {
+    if (
+      session.role ===
+      "Employee"
+    ) {
+      if (employeeIdValue) {
+        const requestedEmployeeId =
+          Number(
+            employeeIdValue
+          );
+
+        if (
+          !Number.isInteger(
+            requestedEmployeeId
+          ) ||
+          requestedEmployeeId <= 0
+        ) {
+          return NextResponse.json(
+            {
+              error:
+                "Invalid employee.",
+            },
+            {
+              status: 400,
+            }
+          );
+        }
+
+        if (
+          requestedEmployeeId !==
+          session.employeeId
+        ) {
+          return NextResponse.json(
+            {
+              error:
+                "You cannot access another employee's schedule.",
+            },
+            {
+              status: 403,
+            }
+          );
+        }
+      }
+
+      where.employees = {
+        some: {
+          employeeId:
+            session.employeeId,
+        },
+      };
+    } else if (
+      employeeIdValue
+    ) {
       const employeeId =
         Number(
           employeeIdValue
@@ -238,6 +348,19 @@ export async function POST(
   request: Request
 ) {
   try {
+    const auth =
+      await requireOfficeSession();
+
+    if (
+      !auth.session ||
+      auth.response
+    ) {
+      return auth.response;
+    }
+
+    const session =
+      auth.session;
+
     const body =
       await request.json();
 
@@ -331,7 +454,7 @@ export async function POST(
       await prisma.project.findFirst({
         where: {
           id: projectId,
-          companyId: COMPANY_ID,
+          companyId: session.companyId,
         },
       });
 
@@ -369,7 +492,7 @@ export async function POST(
             in: employeeIds,
           },
           companyId:
-            COMPANY_ID,
+            session.companyId,
           active: true,
         },
         select: {
@@ -400,14 +523,14 @@ export async function POST(
               where: {
                 companyId_projectId_date: {
                   companyId:
-                    COMPANY_ID,
+                    session.companyId,
                   projectId,
                   date,
                 },
               },
               create: {
                 companyId:
-                  COMPANY_ID,
+                  session.companyId,
                 projectId,
                 date,
                 priority,
@@ -533,6 +656,19 @@ export async function DELETE(
   request: Request
 ) {
   try {
+    const auth =
+      await requireOfficeSession();
+
+    if (
+      !auth.session ||
+      auth.response
+    ) {
+      return auth.response;
+    }
+
+    const session =
+      auth.session;
+
     const url = new URL(
       request.url
     );
@@ -572,7 +708,7 @@ export async function DELETE(
           id:
             assignmentId,
           companyId:
-            COMPANY_ID,
+            session.companyId,
         },
         include: {
           employees: true,

@@ -517,95 +517,148 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="rounded-xl bg-white p-6 shadow">
+        <div className="rounded-xl bg-white p-5 shadow dark:bg-slate-900 sm:p-6">
           <h2 className="mb-5 text-2xl font-semibold">
-            Today&apos;s Time
-            Entries
+            Today&apos;s Time Entries
           </h2>
 
-          {todaysEntries.length >
-          0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-slate-100">
-                  <tr>
-                    <th className="p-4 text-left">
-                      Employee
-                    </th>
+          {todaysEntries.length > 0 ? (
+            <>
+              <div className="space-y-4 md:hidden">
+                {todaysEntries.map(
+                  (entry) => (
+                    <div
+                      key={entry.id}
+                      className="rounded-xl border border-slate-200 p-4 dark:border-slate-700"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-semibold">
+                            {entry.employeeName}
+                          </p>
 
-                    <th className="p-4 text-left">
-                      Project
-                    </th>
+                          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                            {entry.projectName}
+                          </p>
+                        </div>
 
-                    <th className="p-4 text-left">
-                      Clock In
-                    </th>
+                        <div className="rounded-lg bg-blue-50 px-3 py-2 text-right dark:bg-blue-950/40">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">
+                            Hours
+                          </p>
 
-                    <th className="p-4 text-left">
-                      Clock Out
-                    </th>
+                          <p className="mt-1 text-lg font-bold text-blue-950 dark:text-blue-100">
+                            {calculateHours(
+                              entry.clockIn,
+                              entry.clockOut
+                            ).toFixed(2)}
+                          </p>
+                        </div>
+                      </div>
 
-                    <th className="p-4 text-left">
-                      Hours
-                    </th>
-                  </tr>
-                </thead>
+                      <div className="mt-4 grid grid-cols-2 gap-3">
+                        <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-800">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                            Clock In
+                          </p>
 
-                <tbody>
-                  {todaysEntries.map(
-                    (
-                      entry
-                    ) => (
-                      <tr
-                        key={
-                          entry.id
-                        }
-                        className="border-t"
-                      >
-                        <td className="p-4">
-                          {
-                            entry.employeeName
-                          }
-                        </td>
+                          <p className="mt-1 font-semibold">
+                            {formatTime(
+                              entry.clockIn
+                            )}
+                          </p>
+                        </div>
 
-                        <td className="p-4">
-                          {
-                            entry.projectName
-                          }
-                        </td>
+                        <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-800">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                            Clock Out
+                          </p>
 
-                        <td className="p-4">
-                          {formatTime(
-                            entry.clockIn
-                          )}
-                        </td>
+                          <p className="mt-1 font-semibold">
+                            {entry.clockOut
+                              ? formatTime(
+                                  entry.clockOut
+                                )
+                              : "Present"}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                )}
+              </div>
 
-                        <td className="p-4">
-                          {entry.clockOut
-                            ? formatTime(
-                                entry.clockOut
-                              )
-                            : "Present"}
-                        </td>
+              <div className="hidden overflow-x-auto md:block">
+                <table className="w-full">
+                  <thead className="bg-slate-100 dark:bg-slate-800">
+                    <tr>
+                      <th className="p-4 text-left">
+                        Employee
+                      </th>
 
-                        <td className="p-4">
-                          {calculateHours(
-                            entry.clockIn,
-                            entry.clockOut
-                          ).toFixed(
-                            2
-                          )}
-                        </td>
-                      </tr>
-                    )
-                  )}
-                </tbody>
-              </table>
-            </div>
+                      <th className="p-4 text-left">
+                        Project
+                      </th>
+
+                      <th className="p-4 text-left">
+                        Clock In
+                      </th>
+
+                      <th className="p-4 text-left">
+                        Clock Out
+                      </th>
+
+                      <th className="p-4 text-left">
+                        Hours
+                      </th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {todaysEntries.map(
+                      (entry) => (
+                        <tr
+                          key={entry.id}
+                          className="border-t dark:border-slate-700"
+                        >
+                          <td className="p-4">
+                            {entry.employeeName}
+                          </td>
+
+                          <td className="p-4">
+                            {entry.projectName}
+                          </td>
+
+                          <td className="p-4">
+                            {formatTime(
+                              entry.clockIn
+                            )}
+                          </td>
+
+                          <td className="p-4">
+                            {entry.clockOut
+                              ? formatTime(
+                                  entry.clockOut
+                                )
+                              : "Present"}
+                          </td>
+
+                          <td className="p-4">
+                            {calculateHours(
+                              entry.clockIn,
+                              entry.clockOut
+                            ).toFixed(2)}
+                          </td>
+                        </tr>
+                      )
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
           ) : (
-            <p className="text-gray-500">
-              No time entries have
-              been recorded today.
+            <p className="text-gray-500 dark:text-slate-400">
+              No time entries have been recorded today.
             </p>
           )}
         </div>

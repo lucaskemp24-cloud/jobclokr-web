@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
-
-const COMPANY_ID = 1;
+import { getSession } from "@/lib/session";
 
 type SettingsRequestBody = {
   companyName?: string;
@@ -28,17 +27,108 @@ type SettingsRequestBody = {
   overtimeNotification?: boolean;
 };
 
+async function requireOfficeSession() {
+  const session =
+    await getSession();
+
+  if (!session) {
+    return {
+      session: null,
+      response:
+        NextResponse.json(
+          {
+            error:
+              "Authentication required.",
+          },
+          {
+            status: 401,
+          }
+        ),
+    };
+  }
+
+  if (
+    session.role !== "Owner" &&
+    session.role !== "Office"
+  ) {
+    return {
+      session: null,
+      response:
+        NextResponse.json(
+          {
+            error:
+              "Office access required.",
+          },
+          {
+            status: 403,
+          }
+        ),
+    };
+  }
+
+  return {
+    session,
+    response: null,
+  };
+}
+
 export async function GET() {
   try {
+    console.log(
+      "GET /api/settings started"
+    );
+
+    const auth =
+      await requireOfficeSession();
+
+    if (
+      !auth.session ||
+      auth.response
+    ) {
+      console.log(
+        "GET /api/settings blocked by session check"
+      );
+
+      return auth.response;
+    }
+
+    console.log(
+      "Settings session:",
+      {
+        employeeId:
+          auth.session.employeeId,
+        companyId:
+          auth.session.companyId,
+        role:
+          auth.session.role,
+      }
+    );
+
     const company =
       await prisma.company.findUnique({
         where: {
-          id: COMPANY_ID,
+          id:
+            auth.session.companyId,
         },
+
         include: {
           settings: true,
         },
       });
+
+    console.log(
+      "Settings company lookup result:",
+      company
+        ? {
+            id: company.id,
+            name: company.name,
+            hasSettings:
+              Boolean(
+                company.settings
+              ),
+          }
+        : null
+    );
 
     if (!company) {
       return NextResponse.json(
@@ -56,17 +146,30 @@ export async function GET() {
       company.settings ??
       (await prisma.companySettings.create({
         data: {
-          companyId: company.id,
+          companyId:
+            company.id,
         },
       }));
 
-    return NextResponse.json({
-      companyName: company.name,
+    console.log(
+      "GET /api/settings completed successfully"
+    );
 
-      phone: settings.phone ?? "",
-      email: settings.email ?? "",
-      website: settings.website ?? "",
-      address: settings.address ?? "",
+    return NextResponse.json({
+      companyName:
+        company.name,
+
+      phone:
+        settings.phone ?? "",
+
+      email:
+        settings.email ?? "",
+
+      website:
+        settings.website ?? "",
+
+      address:
+        settings.address ?? "",
 
       defaultShiftStart:
         settings.defaultShiftStart,
@@ -103,9 +206,27 @@ export async function GET() {
     });
   } catch (error) {
     console.error(
-      "Failed to load company settings:",
-      error
+      "Failed to load company settings:"
     );
+
+    console.error(error);
+
+    if (error instanceof Error) {
+      console.error(
+        "Error name:",
+        error.name
+      );
+
+      console.error(
+        "Error message:",
+        error.message
+      );
+
+      console.error(
+        "Error stack:",
+        error.stack
+      );
+    }
 
     return NextResponse.json(
       {
@@ -123,13 +244,32 @@ export async function PUT(
   request: Request
 ) {
   try {
+    console.log(
+      "PUT /api/settings started"
+    );
+
+    const auth =
+      await requireOfficeSession();
+
+    if (
+      !auth.session ||
+      auth.response
+    ) {
+      console.log(
+        "PUT /api/settings blocked by session check"
+      );
+
+      return auth.response;
+    }
+
     const body =
       (await request.json()) as SettingsRequestBody;
 
     const company =
       await prisma.company.findUnique({
         where: {
-          id: COMPANY_ID,
+          id:
+            auth.session.companyId,
         },
       });
 
@@ -146,7 +286,8 @@ export async function PUT(
     }
 
     const companyName =
-      typeof body.companyName === "string"
+      typeof body.companyName ===
+      "string"
         ? body.companyName.trim()
         : company.name;
 
@@ -164,33 +305,42 @@ export async function PUT(
 
     await prisma.company.update({
       where: {
-        id: company.id,
+        id:
+          company.id,
       },
+
       data: {
-        name: companyName,
+        name:
+          companyName,
       },
     });
 
     const settings =
       await prisma.companySettings.upsert({
         where: {
-          companyId: company.id,
+          companyId:
+            company.id,
         },
 
         create: {
-          companyId: company.id,
+          companyId:
+            company.id,
 
           phone:
-            body.phone?.trim() || null,
+            body.phone?.trim() ||
+            null,
 
           email:
-            body.email?.trim() || null,
+            body.email?.trim() ||
+            null,
 
           website:
-            body.website?.trim() || null,
+            body.website?.trim() ||
+            null,
 
           address:
-            body.address?.trim() || null,
+            body.address?.trim() ||
+            null,
 
           defaultShiftStart:
             body.defaultShiftStart ||
@@ -243,16 +393,20 @@ export async function PUT(
 
         update: {
           phone:
-            body.phone?.trim() || null,
+            body.phone?.trim() ||
+            null,
 
           email:
-            body.email?.trim() || null,
+            body.email?.trim() ||
+            null,
 
           website:
-            body.website?.trim() || null,
+            body.website?.trim() ||
+            null,
 
           address:
-            body.address?.trim() || null,
+            body.address?.trim() ||
+            null,
 
           defaultShiftStart:
             body.defaultShiftStart ||
@@ -304,13 +458,24 @@ export async function PUT(
         },
       });
 
+    console.log(
+      "PUT /api/settings completed successfully"
+    );
+
     return NextResponse.json({
       companyName,
 
-      phone: settings.phone ?? "",
-      email: settings.email ?? "",
-      website: settings.website ?? "",
-      address: settings.address ?? "",
+      phone:
+        settings.phone ?? "",
+
+      email:
+        settings.email ?? "",
+
+      website:
+        settings.website ?? "",
+
+      address:
+        settings.address ?? "",
 
       defaultShiftStart:
         settings.defaultShiftStart,
@@ -347,9 +512,27 @@ export async function PUT(
     });
   } catch (error) {
     console.error(
-      "Failed to save company settings:",
-      error
+      "Failed to save company settings:"
     );
+
+    console.error(error);
+
+    if (error instanceof Error) {
+      console.error(
+        "Error name:",
+        error.name
+      );
+
+      console.error(
+        "Error message:",
+        error.message
+      );
+
+      console.error(
+        "Error stack:",
+        error.stack
+      );
+    }
 
     return NextResponse.json(
       {

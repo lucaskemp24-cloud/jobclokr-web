@@ -6,10 +6,20 @@ import { useRouter } from "next/navigation";
 import EmployeeLayout from "@/components/layout/EmployeeLayout";
 import { useToast } from "@/components/ui/ToastProvider";
 
-import {
-  loadAuthUser,
-  type AuthUser,
-} from "@/lib/auth";
+type SessionUser = {
+  employeeId: number;
+  companyId: number;
+  name: string;
+  role:
+    | "Owner"
+    | "Office"
+    | "Employee";
+};
+
+type SessionResponse = {
+  authenticated: boolean;
+  user: SessionUser | null;
+};
 
 type DatabaseEmployee = {
   id: number;
@@ -126,6 +136,27 @@ function calculateHours(
   );
 }
 
+function getTimekeepingErrorMessage(
+  error: unknown,
+  action: "clock in" | "clock out"
+) {
+  if (
+    typeof navigator !== "undefined" &&
+    (
+      !navigator.onLine ||
+      error instanceof TypeError
+    )
+  ) {
+    return `No internet connection. Your ${action} was not saved. Reconnect and try again.`;
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return `Unable to ${action}. Please try again.`;
+}
+
 function getPriorityLabel(
   priority: SchedulePriority
 ) {
@@ -190,7 +221,7 @@ export default function EmployeePortalPage() {
     authUser,
     setAuthUser,
   ] =
-    useState<AuthUser | null>(
+    useState<SessionUser | null>(
       null
     );
 
@@ -232,28 +263,47 @@ export default function EmployeePortalPage() {
 
   useEffect(() => {
     async function loadPortal() {
-      const savedUser =
-        loadAuthUser();
-
-      if (!savedUser) {
-        router.replace(
-          "/login"
-        );
-        return;
-      }
-
-      if (
-        savedUser.role ===
-          "Owner" ||
-        savedUser.role ===
-          "Office"
-      ) {
-        router.replace("/");
-        return;
-      }
-
       try {
         setDataLoaded(false);
+
+        const sessionResponse =
+          await fetch(
+            "/api/session",
+            {
+              cache:
+                "no-store",
+            }
+          );
+
+        const sessionData =
+          (await sessionResponse.json()) as
+            SessionResponse;
+
+        if (
+          !sessionResponse.ok ||
+          !sessionData.authenticated ||
+          !sessionData.user
+        ) {
+          router.replace(
+            "/login"
+          );
+
+          return;
+        }
+
+        const sessionUser =
+          sessionData.user;
+
+        if (
+          sessionUser.role ===
+            "Owner" ||
+          sessionUser.role ===
+            "Office"
+        ) {
+          router.replace("/");
+
+          return;
+        }
 
         const [
           employeesResponse,
@@ -269,14 +319,14 @@ export default function EmployeePortalPage() {
               }
             ),
             fetch(
-              `/api/schedule?date=${getTodayDate()}&employeeId=${savedUser.employeeId}`,
+              `/api/schedule?date=${getTodayDate()}&employeeId=${sessionUser.employeeId}`,
               {
                 cache:
                   "no-store",
               }
             ),
             fetch(
-              `/api/time-entries?employeeId=${savedUser.employeeId}`,
+              `/api/time-entries?employeeId=${sessionUser.employeeId}`,
               {
                 cache:
                   "no-store",
@@ -332,7 +382,7 @@ export default function EmployeePortalPage() {
               savedEmployee: DatabaseEmployee
             ) =>
               savedEmployee.id ===
-                savedUser.employeeId &&
+                sessionUser.employeeId &&
               savedEmployee.active
           );
 
@@ -345,7 +395,7 @@ export default function EmployeePortalPage() {
         }
 
         setAuthUser(
-          savedUser
+          sessionUser
         );
 
         setEmployee(
@@ -613,10 +663,16 @@ export default function EmployeePortalPage() {
         "success"
       );
     } catch (error) {
+      console.error(
+        "Clock in failed:",
+        error
+      );
+
       showToast(
-        error instanceof Error
-          ? error.message
-          : "Unable to clock in.",
+        getTimekeepingErrorMessage(
+          error,
+          "clock in"
+        ),
         "error"
       );
     }
@@ -680,10 +736,16 @@ export default function EmployeePortalPage() {
         "success"
       );
     } catch (error) {
+      console.error(
+        "Clock out failed:",
+        error
+      );
+
       showToast(
-        error instanceof Error
-          ? error.message
-          : "Unable to clock out.",
+        getTimekeepingErrorMessage(
+          error,
+          "clock out"
+        ),
         "error"
       );
     }
@@ -860,7 +922,10 @@ export default function EmployeePortalPage() {
           </section>
         )}
 
-        <section>
+        <section
+          id="assignment-section"
+          className="scroll-mt-24"
+        >
           <div className="mb-4 flex items-end justify-between">
             <div>
               <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
@@ -1154,7 +1219,10 @@ export default function EmployeePortalPage() {
           )}
         </section>
 
-        <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <section
+          id="hours-section"
+          className="mt-5 scroll-mt-24 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+        >
           <div className="flex items-end justify-between">
             <div>
               <p className="text-sm font-semibold text-slate-500">

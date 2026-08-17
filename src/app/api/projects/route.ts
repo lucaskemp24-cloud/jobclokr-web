@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
-
-const COMPANY_ID = 1;
+import { getSession } from "@/lib/session";
 
 const VALID_STATUSES = [
   "Not Started",
@@ -98,6 +97,36 @@ export async function GET(
   request: Request
 ) {
   try {
+    const session =
+      await getSession();
+
+    if (!session) {
+      return NextResponse.json(
+        {
+          error:
+            "Authentication required.",
+        },
+        {
+          status: 401,
+        }
+      );
+    }
+
+    if (
+      session.role !== "Owner" &&
+      session.role !== "Office"
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Office access required.",
+        },
+        {
+          status: 403,
+        }
+      );
+    }
+
     const url =
       new URL(request.url);
 
@@ -133,7 +162,7 @@ export async function GET(
       await prisma.project.findMany({
         where: {
           companyId:
-            COMPANY_ID,
+            session.companyId,
 
           ...(customerId
             ? {
@@ -186,6 +215,36 @@ export async function POST(
   request: Request
 ) {
   try {
+    const session =
+      await getSession();
+
+    if (!session) {
+      return NextResponse.json(
+        {
+          error:
+            "Authentication required.",
+        },
+        {
+          status: 401,
+        }
+      );
+    }
+
+    if (
+      session.role !== "Owner" &&
+      session.role !== "Office"
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Office access required.",
+        },
+        {
+          status: 403,
+        }
+      );
+    }
+
     const body =
       await request.json();
 
@@ -265,7 +324,7 @@ export async function POST(
         where: {
           id: customerId,
           companyId:
-            COMPANY_ID,
+            session.companyId,
         },
       });
 
@@ -285,7 +344,7 @@ export async function POST(
       await prisma.project.findFirst({
         where: {
           companyId:
-            COMPANY_ID,
+            session.companyId,
           customerId,
 
           name: {
@@ -311,7 +370,7 @@ export async function POST(
       await prisma.project.create({
         data: {
           companyId:
-            COMPANY_ID,
+            session.companyId,
 
           customerId,
 
@@ -385,6 +444,36 @@ export async function PATCH(
   request: Request
 ) {
   try {
+    const session =
+      await getSession();
+
+    if (!session) {
+      return NextResponse.json(
+        {
+          error:
+            "Authentication required.",
+        },
+        {
+          status: 401,
+        }
+      );
+    }
+
+    if (
+      session.role !== "Owner" &&
+      session.role !== "Office"
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Office access required.",
+        },
+        {
+          status: 403,
+        }
+      );
+    }
+
     const body =
       await request.json();
 
@@ -411,7 +500,7 @@ export async function PATCH(
         where: {
           id,
           companyId:
-            COMPANY_ID,
+            session.companyId,
         },
       });
 
@@ -497,7 +586,7 @@ export async function PATCH(
         where: {
           id: customerId,
           companyId:
-            COMPANY_ID,
+            session.companyId,
         },
       });
 
@@ -517,7 +606,7 @@ export async function PATCH(
       await prisma.project.findFirst({
         where: {
           companyId:
-            COMPANY_ID,
+            session.companyId,
           customerId,
 
           name: {
@@ -634,6 +723,36 @@ export async function DELETE(
   request: Request
 ) {
   try {
+    const session =
+      await getSession();
+
+    if (!session) {
+      return NextResponse.json(
+        {
+          error:
+            "Authentication required.",
+        },
+        {
+          status: 401,
+        }
+      );
+    }
+
+    if (
+      session.role !== "Owner" &&
+      session.role !== "Office"
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Office access required.",
+        },
+        {
+          status: 403,
+        }
+      );
+    }
+
     const url =
       new URL(request.url);
 
@@ -664,7 +783,7 @@ export async function DELETE(
         where: {
           id,
           companyId:
-            COMPANY_ID,
+            session.companyId,
         },
       });
 

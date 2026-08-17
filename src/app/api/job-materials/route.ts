@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
-
-const COMPANY_ID = 1;
+import { getSession } from "@/lib/session";
 
 function serializeMaterial(material: {
   id: number;
@@ -32,19 +31,42 @@ function serializeMaterial(material: {
     quantity: material.quantity,
     unit: material.unit,
     notes: material.notes ?? "",
-    createdAt: material.createdAt.toISOString(),
+    createdAt:
+      material.createdAt.toISOString(),
   };
 }
 
-export async function GET(request: Request) {
+export async function GET(
+  request: Request
+) {
   try {
-    const url = new URL(request.url);
+    const session =
+      await getSession();
+
+    if (!session) {
+      return NextResponse.json(
+        {
+          error:
+            "Authentication required.",
+        },
+        {
+          status: 401,
+        }
+      );
+    }
+
+    const url =
+      new URL(request.url);
 
     const projectIdValue =
-      url.searchParams.get("projectId");
+      url.searchParams.get(
+        "projectId"
+      );
 
     const employeeIdValue =
-      url.searchParams.get("employeeId");
+      url.searchParams.get(
+        "employeeId"
+      );
 
     const where: {
       projectId?: number;
@@ -52,22 +74,53 @@ export async function GET(request: Request) {
       project?: {
         companyId: number;
       };
+      OR?: Array<
+        | {
+            project: {
+              assignments: {
+                some: {
+                  employeeId: number;
+                };
+              };
+            };
+          }
+        | {
+            project: {
+              scheduleAssignments: {
+                some: {
+                  employees: {
+                    some: {
+                      employeeId: number;
+                    };
+                  };
+                };
+              };
+            };
+          }
+      >;
     } = {
       project: {
-        companyId: COMPANY_ID,
+        companyId:
+          session.companyId,
       },
     };
 
     if (projectIdValue) {
-      const projectId = Number(projectIdValue);
+      const projectId =
+        Number(
+          projectIdValue
+        );
 
       if (
-        !Number.isInteger(projectId) ||
+        !Number.isInteger(
+          projectId
+        ) ||
         projectId <= 0
       ) {
         return NextResponse.json(
           {
-            error: "Invalid project.",
+            error:
+              "Invalid project.",
           },
           {
             status: 400,
@@ -75,19 +128,100 @@ export async function GET(request: Request) {
         );
       }
 
-      where.projectId = projectId;
+      where.projectId =
+        projectId;
     }
 
-    if (employeeIdValue) {
-      const employeeId = Number(employeeIdValue);
+    if (
+      session.role ===
+      "Employee"
+    ) {
+      if (employeeIdValue) {
+        const requestedEmployeeId =
+          Number(
+            employeeIdValue
+          );
+
+        if (
+          !Number.isInteger(
+            requestedEmployeeId
+          ) ||
+          requestedEmployeeId <= 0
+        ) {
+          return NextResponse.json(
+            {
+              error:
+                "Invalid employee.",
+            },
+            {
+              status: 400,
+            }
+          );
+        }
+
+        if (
+          requestedEmployeeId !==
+          session.employeeId
+        ) {
+          return NextResponse.json(
+            {
+              error:
+                "You cannot access another employee's materials.",
+            },
+            {
+              status: 403,
+            }
+          );
+        }
+
+        where.employeeId =
+          session.employeeId;
+      }
+
+      where.OR = [
+        {
+          project: {
+            assignments: {
+              some: {
+                employeeId:
+                  session.employeeId,
+              },
+            },
+          },
+        },
+        {
+          project: {
+            scheduleAssignments: {
+              some: {
+                employees: {
+                  some: {
+                    employeeId:
+                      session.employeeId,
+                  },
+                },
+              },
+            },
+          },
+        },
+      ];
+    } else if (
+      employeeIdValue
+    ) {
+      const employeeId =
+        Number(
+          employeeIdValue
+        );
 
       if (
-        !Number.isInteger(employeeId) ||
+        !Number.isInteger(
+          employeeId
+        ) ||
         employeeId <= 0
       ) {
         return NextResponse.json(
           {
-            error: "Invalid employee.",
+            error:
+              "Invalid employee.",
           },
           {
             status: 400,
@@ -95,23 +229,28 @@ export async function GET(request: Request) {
         );
       }
 
-      where.employeeId = employeeId;
+      where.employeeId =
+        employeeId;
     }
 
     const materials =
       await prisma.jobMaterial.findMany({
         where,
+
         include: {
           employee: true,
           project: true,
         },
+
         orderBy: {
           createdAt: "desc",
         },
       });
 
     return NextResponse.json(
-      materials.map(serializeMaterial)
+      materials.map(
+        serializeMaterial
+      )
     );
   } catch (error) {
     console.error(
@@ -121,7 +260,8 @@ export async function GET(request: Request) {
 
     return NextResponse.json(
       {
-        error: "Unable to load job materials.",
+        error:
+          "Unable to load job materials.",
       },
       {
         status: 500,
@@ -130,45 +270,68 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(
+  request: Request
+) {
   try {
-    const body = await request.json();
+    const session =
+      await getSession();
 
-    const projectId = Number(body.projectId);
-    const employeeId = Number(body.employeeId);
-
-    const materialName =
-      String(body.materialName ?? "").trim();
-
-    const quantity = Number(body.quantity);
-
-    const unit =
-      String(body.unit ?? "").trim();
-
-    const notes =
-      String(body.notes ?? "").trim();
-
-    if (
-      !Number.isInteger(projectId) ||
-      projectId <= 0
-    ) {
+    if (!session) {
       return NextResponse.json(
         {
-          error: "A valid project is required.",
+          error:
+            "Authentication required.",
         },
         {
-          status: 400,
+          status: 401,
         }
       );
     }
 
+    const body =
+      await request.json();
+
+    const projectId =
+      Number(
+        body.projectId
+      );
+
+    const requestedEmployeeId =
+      Number(
+        body.employeeId
+      );
+
+    const materialName =
+      String(
+        body.materialName ?? ""
+      ).trim();
+
+    const quantity =
+      Number(
+        body.quantity
+      );
+
+    const unit =
+      String(
+        body.unit ?? ""
+      ).trim();
+
+    const notes =
+      String(
+        body.notes ?? ""
+      ).trim();
+
     if (
-      !Number.isInteger(employeeId) ||
-      employeeId <= 0
+      !Number.isInteger(
+        projectId
+      ) ||
+      projectId <= 0
     ) {
       return NextResponse.json(
         {
-          error: "A valid employee is required.",
+          error:
+            "A valid project is required.",
         },
         {
           status: 400,
@@ -179,7 +342,8 @@ export async function POST(request: Request) {
     if (!materialName) {
       return NextResponse.json(
         {
-          error: "Enter a material name.",
+          error:
+            "Enter a material name.",
         },
         {
           status: 400,
@@ -188,12 +352,15 @@ export async function POST(request: Request) {
     }
 
     if (
-      !Number.isFinite(quantity) ||
+      !Number.isFinite(
+        quantity
+      ) ||
       quantity <= 0
     ) {
       return NextResponse.json(
         {
-          error: "Quantity must be greater than zero.",
+          error:
+            "Quantity must be greater than zero.",
         },
         {
           status: 400,
@@ -204,7 +371,8 @@ export async function POST(request: Request) {
     if (!unit) {
       return NextResponse.json(
         {
-          error: "Enter a unit.",
+          error:
+            "Enter a unit.",
         },
         {
           status: 400,
@@ -212,18 +380,75 @@ export async function POST(request: Request) {
       );
     }
 
-    const [project, employee] =
+    let employeeId:
+      number;
+
+    if (
+      session.role ===
+      "Employee"
+    ) {
+      if (
+        Number.isInteger(
+          requestedEmployeeId
+        ) &&
+        requestedEmployeeId >
+          0 &&
+        requestedEmployeeId !==
+          session.employeeId
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "You cannot add materials for another employee.",
+          },
+          {
+            status: 403,
+          }
+        );
+      }
+
+      employeeId =
+        session.employeeId;
+    } else {
+      if (
+        !Number.isInteger(
+          requestedEmployeeId
+        ) ||
+        requestedEmployeeId <= 0
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "A valid employee is required.",
+          },
+          {
+            status: 400,
+          }
+        );
+      }
+
+      employeeId =
+        requestedEmployeeId;
+    }
+
+    const [
+      project,
+      employee,
+    ] =
       await Promise.all([
         prisma.project.findFirst({
           where: {
             id: projectId,
-            companyId: COMPANY_ID,
+            companyId:
+              session.companyId,
           },
         }),
+
         prisma.employee.findFirst({
           where: {
             id: employeeId,
-            companyId: COMPANY_ID,
+            companyId:
+              session.companyId,
             active: true,
           },
         }),
@@ -232,7 +457,8 @@ export async function POST(request: Request) {
     if (!project) {
       return NextResponse.json(
         {
-          error: "Project not found.",
+          error:
+            "Project not found.",
         },
         {
           status: 404,
@@ -243,7 +469,8 @@ export async function POST(request: Request) {
     if (!employee) {
       return NextResponse.json(
         {
-          error: "Active employee account not found.",
+          error:
+            "Active employee account not found.",
         },
         {
           status: 404,
@@ -267,10 +494,13 @@ export async function POST(request: Request) {
       await prisma.scheduleAssignmentEmployee.findFirst({
         where: {
           employeeId,
+
           assignment: {
             projectId,
-            companyId: COMPANY_ID,
-            date: scheduleDate,
+            companyId:
+              session.companyId,
+            date:
+              scheduleDate,
           },
         },
       });
@@ -284,6 +514,8 @@ export async function POST(request: Request) {
       });
 
     if (
+      session.role ===
+        "Employee" &&
       !scheduledEmployee &&
       !projectAssignment
     ) {
@@ -306,9 +538,11 @@ export async function POST(request: Request) {
           materialName,
           quantity,
           unit,
+
           notes:
             notes || null,
         },
+
         include: {
           employee: true,
           project: true,
@@ -316,7 +550,9 @@ export async function POST(request: Request) {
       });
 
     return NextResponse.json(
-      serializeMaterial(material),
+      serializeMaterial(
+        material
+      ),
       {
         status: 201,
       }
@@ -329,7 +565,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json(
       {
-        error: "Unable to add material.",
+        error:
+          "Unable to add material.",
       },
       {
         status: 500,
@@ -338,16 +575,41 @@ export async function POST(request: Request) {
   }
 }
 
-export async function DELETE(request: Request) {
+export async function DELETE(
+  request: Request
+) {
   try {
-    const url = new URL(request.url);
+    const session =
+      await getSession();
 
-    const id = Number(
-      url.searchParams.get("id")
-    );
+    if (!session) {
+      return NextResponse.json(
+        {
+          error:
+            "Authentication required.",
+        },
+        {
+          status: 401,
+        }
+      );
+    }
+
+    const url =
+      new URL(
+        request.url
+      );
+
+    const id =
+      Number(
+        url.searchParams.get(
+          "id"
+        )
+      );
 
     const employeeIdValue =
-      url.searchParams.get("employeeId");
+      url.searchParams.get(
+        "employeeId"
+      );
 
     if (
       !Number.isInteger(id) ||
@@ -364,40 +626,100 @@ export async function DELETE(request: Request) {
       );
     }
 
-    const employeeId =
-      employeeIdValue
-        ? Number(employeeIdValue)
-        : null;
+    let employeeId:
+      number | null =
+        null;
 
     if (
-      employeeIdValue &&
-      (
-        !Number.isInteger(employeeId) ||
-        Number(employeeId) <= 0
-      )
+      session.role ===
+      "Employee"
     ) {
-      return NextResponse.json(
-        {
-          error:
-            "A valid employee is required.",
-        },
-        {
-          status: 400,
+      if (
+        employeeIdValue
+      ) {
+        const requestedEmployeeId =
+          Number(
+            employeeIdValue
+          );
+
+        if (
+          !Number.isInteger(
+            requestedEmployeeId
+          ) ||
+          requestedEmployeeId <= 0
+        ) {
+          return NextResponse.json(
+            {
+              error:
+                "A valid employee is required.",
+            },
+            {
+              status: 400,
+            }
+          );
         }
-      );
+
+        if (
+          requestedEmployeeId !==
+          session.employeeId
+        ) {
+          return NextResponse.json(
+            {
+              error:
+                "You cannot delete another employee's material.",
+            },
+            {
+              status: 403,
+            }
+          );
+        }
+      }
+
+      employeeId =
+        session.employeeId;
+    } else if (
+      employeeIdValue
+    ) {
+      const requestedEmployeeId =
+        Number(
+          employeeIdValue
+        );
+
+      if (
+        !Number.isInteger(
+          requestedEmployeeId
+        ) ||
+        requestedEmployeeId <= 0
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "A valid employee is required.",
+          },
+          {
+            status: 400,
+          }
+        );
+      }
+
+      employeeId =
+        requestedEmployeeId;
     }
 
     const material =
       await prisma.jobMaterial.findFirst({
         where: {
           id,
+
           ...(employeeId
             ? {
                 employeeId,
               }
             : {}),
+
           project: {
-            companyId: COMPANY_ID,
+            companyId:
+              session.companyId,
           },
         },
       });
@@ -410,6 +732,23 @@ export async function DELETE(request: Request) {
         },
         {
           status: 404,
+        }
+      );
+    }
+
+    if (
+      session.role ===
+        "Employee" &&
+      material.employeeId !==
+        session.employeeId
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "You cannot delete another employee's material.",
+        },
+        {
+          status: 403,
         }
       );
     }

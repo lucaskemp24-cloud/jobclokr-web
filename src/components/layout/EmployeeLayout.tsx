@@ -7,14 +7,25 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 
-import {
-  loadAuthUser,
-  logoutUser,
-  type AuthUser,
-} from "@/lib/auth";
+import { logoutUser } from "@/lib/auth";
 
 type EmployeeLayoutProps = {
   children: ReactNode;
+};
+
+type SessionUser = {
+  employeeId: number;
+  companyId: number;
+  name: string;
+  role:
+    | "Owner"
+    | "Office"
+    | "Employee";
+};
+
+type SessionResponse = {
+  authenticated: boolean;
+  user: SessionUser | null;
 };
 
 export default function EmployeeLayout({
@@ -23,24 +34,92 @@ export default function EmployeeLayout({
   const router = useRouter();
 
   const [user, setUser] =
-    useState<AuthUser | null>(null);
+    useState<SessionUser | null>(
+      null
+    );
 
-  const [showProfileMenu, setShowProfileMenu] =
-    useState(false);
+  const [
+    showProfileMenu,
+    setShowProfileMenu,
+  ] = useState(false);
 
-  const [showMoreMenu, setShowMoreMenu] =
-    useState(false);
+  const [
+    showMoreMenu,
+    setShowMoreMenu,
+  ] = useState(false);
 
   useEffect(() => {
-    setUser(loadAuthUser());
-  }, []);
+    async function loadSessionUser() {
+      try {
+        const response =
+          await fetch(
+            "/api/session",
+            {
+              cache: "no-store",
+            }
+          );
+
+        const data =
+          (await response.json()) as
+            SessionResponse;
+
+        if (
+          !response.ok ||
+          !data.authenticated ||
+          !data.user
+        ) {
+          setUser(null);
+
+          router.replace(
+            "/login"
+          );
+
+          return;
+        }
+
+        if (
+          data.user.role ===
+            "Owner" ||
+          data.user.role ===
+            "Office"
+        ) {
+          setUser(
+            data.user
+          );
+
+          router.replace("/");
+
+          return;
+        }
+
+        setUser(
+          data.user
+        );
+      } catch (error) {
+        console.error(
+          "Employee layout session load failed:",
+          error
+        );
+
+        setUser(null);
+
+        router.replace(
+          "/login"
+        );
+      }
+    }
+
+    void loadSessionUser();
+  }, [router]);
 
   const initials = user?.name
     ? user.name
         .split(" ")
         .filter(Boolean)
         .slice(0, 2)
-        .map((namePart) => namePart.charAt(0))
+        .map((namePart) =>
+          namePart.charAt(0)
+        )
         .join("")
         .toUpperCase()
     : "JC";
@@ -50,7 +129,9 @@ export default function EmployeeLayout({
     setShowMoreMenu(false);
   }
 
-  function scrollToSection(sectionId: string) {
+  function scrollToSection(
+    sectionId: string
+  ) {
     closeMenus();
 
     if (sectionId === "top") {
@@ -63,27 +144,54 @@ export default function EmployeeLayout({
     }
 
     document
-      .getElementById(sectionId)
+      .getElementById(
+        sectionId
+      )
       ?.scrollIntoView({
         behavior: "smooth",
         block: "start",
       });
   }
 
-  function handleLogout() {
+  async function handleLogout() {
+    try {
+      await fetch(
+        "/api/logout",
+        {
+          method: "POST",
+        }
+      );
+    } catch (error) {
+      console.error(
+        "Server logout failed:",
+        error
+      );
+    }
+
     logoutUser();
     closeMenus();
-    router.replace("/login");
+
+    router.replace(
+      "/login"
+    );
+
+    router.refresh();
   }
 
   function handleProfile() {
     closeMenus();
-    router.push("/employee-portal/profile");
+
+    router.push(
+      "/employee-portal/profile"
+    );
   }
 
   function handleSettings() {
     closeMenus();
-    router.push("/employee-portal/settings");
+
+    router.push(
+      "/employee-portal/settings"
+    );
   }
 
   return (
@@ -98,7 +206,11 @@ export default function EmployeeLayout({
         <div className="mx-auto flex max-w-xl items-center justify-between">
           <button
             type="button"
-            onClick={() => scrollToSection("top")}
+            onClick={() =>
+              scrollToSection(
+                "top"
+              )
+            }
             className="text-left"
           >
             <p className="text-xl font-bold text-blue-600">
@@ -113,15 +225,22 @@ export default function EmployeeLayout({
           <button
             type="button"
             onClick={() => {
-              setShowMoreMenu(false);
+              setShowMoreMenu(
+                false
+              );
 
               setShowProfileMenu(
-                (currentValue) => !currentValue
+                (
+                  currentValue
+                ) =>
+                  !currentValue
               );
             }}
             className="flex h-11 w-11 items-center justify-center rounded-full bg-blue-100 font-bold text-blue-700 transition hover:bg-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:hover:bg-blue-900"
             aria-label="Open profile menu"
-            aria-expanded={showProfileMenu}
+            aria-expanded={
+              showProfileMenu
+            }
           >
             {initials}
           </button>
@@ -140,7 +259,11 @@ export default function EmployeeLayout({
           <button
             type="button"
             aria-label="Close profile menu"
-            onClick={() => setShowProfileMenu(false)}
+            onClick={() =>
+              setShowProfileMenu(
+                false
+              )
+            }
             className="fixed inset-0 z-40 bg-black/30"
           />
 
@@ -153,11 +276,13 @@ export default function EmployeeLayout({
 
                 <div className="min-w-0">
                   <p className="truncate font-bold">
-                    {user?.name ?? "Employee"}
+                    {user?.name ??
+                      "Employee"}
                   </p>
 
                   <p className="text-sm text-slate-500 dark:text-slate-400">
-                    {user?.role ?? "Employee"}
+                    {user?.role ??
+                      "Employee"}
                   </p>
                 </div>
               </div>
@@ -166,10 +291,14 @@ export default function EmployeeLayout({
             <div className="space-y-2 p-3">
               <button
                 type="button"
-                onClick={handleProfile}
+                onClick={
+                  handleProfile
+                }
                 className="flex min-h-12 w-full items-center gap-3 rounded-xl px-4 text-left transition hover:bg-slate-100 dark:hover:bg-slate-800"
               >
-                <span className="text-xl">👤</span>
+                <span className="text-xl">
+                  👤
+                </span>
 
                 <div>
                   <p className="font-semibold">
@@ -177,17 +306,22 @@ export default function EmployeeLayout({
                   </p>
 
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    View your employee information
+                    View your employee
+                    information
                   </p>
                 </div>
               </button>
 
               <button
                 type="button"
-                onClick={handleSettings}
+                onClick={
+                  handleSettings
+                }
                 className="flex min-h-12 w-full items-center gap-3 rounded-xl px-4 text-left transition hover:bg-slate-100 dark:hover:bg-slate-800"
               >
-                <span className="text-xl">⚙️</span>
+                <span className="text-xl">
+                  ⚙️
+                </span>
 
                 <div>
                   <p className="font-semibold">
@@ -195,7 +329,8 @@ export default function EmployeeLayout({
                   </p>
 
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Manage your app preferences
+                    Manage your app
+                    preferences
                   </p>
                 </div>
               </button>
@@ -204,10 +339,14 @@ export default function EmployeeLayout({
 
               <button
                 type="button"
-                onClick={handleLogout}
+                onClick={() =>
+                  void handleLogout()
+                }
                 className="flex min-h-12 w-full items-center gap-3 rounded-xl px-4 text-left font-semibold text-red-600 transition hover:bg-red-50 dark:hover:bg-red-950/30"
               >
-                <span className="text-xl">↪</span>
+                <span className="text-xl">
+                  ↪
+                </span>
                 Logout
               </button>
             </div>
@@ -220,7 +359,11 @@ export default function EmployeeLayout({
           <button
             type="button"
             aria-label="Close more menu"
-            onClick={() => setShowMoreMenu(false)}
+            onClick={() =>
+              setShowMoreMenu(
+                false
+              )
+            }
             className="fixed inset-0 z-40 bg-black/30 sm:hidden"
           />
 
@@ -233,16 +376,23 @@ export default function EmployeeLayout({
           >
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <p className="font-bold">More</p>
+                <p className="font-bold">
+                  More
+                </p>
 
                 <p className="text-sm text-slate-500 dark:text-slate-400">
-                  Additional employee tools
+                  Additional employee
+                  tools
                 </p>
               </div>
 
               <button
                 type="button"
-                onClick={() => setShowMoreMenu(false)}
+                onClick={() =>
+                  setShowMoreMenu(
+                    false
+                  )
+                }
                 className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-xl dark:bg-slate-800"
                 aria-label="Close more menu"
               >
@@ -253,7 +403,9 @@ export default function EmployeeLayout({
             <div className="space-y-2">
               <button
                 type="button"
-                onClick={handleProfile}
+                onClick={
+                  handleProfile
+                }
                 className="flex min-h-12 w-full items-center rounded-xl border border-slate-200 px-4 text-left font-medium dark:border-slate-700"
               >
                 👤 My Profile
@@ -261,7 +413,9 @@ export default function EmployeeLayout({
 
               <button
                 type="button"
-                onClick={handleSettings}
+                onClick={
+                  handleSettings
+                }
                 className="flex min-h-12 w-full items-center rounded-xl border border-slate-200 px-4 text-left font-medium dark:border-slate-700"
               >
                 ⚙️ Settings
@@ -269,7 +423,9 @@ export default function EmployeeLayout({
 
               <button
                 type="button"
-                onClick={handleLogout}
+                onClick={() =>
+                  void handleLogout()
+                }
                 className="flex min-h-12 w-full items-center rounded-xl border border-red-200 px-4 text-left font-semibold text-red-600 dark:border-red-900"
               >
                 ↪ Logout
@@ -290,10 +446,16 @@ export default function EmployeeLayout({
         <div className="mx-auto grid max-w-xl grid-cols-4 gap-1">
           <button
             type="button"
-            onClick={() => scrollToSection("top")}
+            onClick={() =>
+              scrollToSection(
+                "top"
+              )
+            }
             className="flex min-h-14 flex-col items-center justify-center rounded-xl text-blue-600"
           >
-            <span className="text-xl">⌂</span>
+            <span className="text-xl">
+              ⌂
+            </span>
 
             <span className="mt-1 text-xs font-semibold">
               Home
@@ -303,11 +465,15 @@ export default function EmployeeLayout({
           <button
             type="button"
             onClick={() =>
-              scrollToSection("assignment-section")
+              scrollToSection(
+                "assignment-section"
+              )
             }
             className="flex min-h-14 flex-col items-center justify-center rounded-xl text-slate-500 dark:text-slate-400"
           >
-            <span className="text-xl">▣</span>
+            <span className="text-xl">
+              ▣
+            </span>
 
             <span className="mt-1 text-xs font-semibold">
               Assignment
@@ -317,11 +483,15 @@ export default function EmployeeLayout({
           <button
             type="button"
             onClick={() =>
-              scrollToSection("hours-section")
+              scrollToSection(
+                "hours-section"
+              )
             }
             className="flex min-h-14 flex-col items-center justify-center rounded-xl text-slate-500 dark:text-slate-400"
           >
-            <span className="text-xl">◷</span>
+            <span className="text-xl">
+              ◷
+            </span>
 
             <span className="mt-1 text-xs font-semibold">
               Hours
@@ -331,15 +501,22 @@ export default function EmployeeLayout({
           <button
             type="button"
             onClick={() => {
-              setShowProfileMenu(false);
+              setShowProfileMenu(
+                false
+              );
 
               setShowMoreMenu(
-                (currentValue) => !currentValue
+                (
+                  currentValue
+                ) =>
+                  !currentValue
               );
             }}
             className="flex min-h-14 flex-col items-center justify-center rounded-xl text-slate-500 dark:text-slate-400"
           >
-            <span className="text-xl">•••</span>
+            <span className="text-xl">
+              •••
+            </span>
 
             <span className="mt-1 text-xs font-semibold">
               More

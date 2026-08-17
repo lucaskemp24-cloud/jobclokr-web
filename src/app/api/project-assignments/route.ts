@@ -1,26 +1,90 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
+import { getSession } from "@/lib/session";
 
-const COMPANY_ID = 1;
+async function requireOfficeSession() {
+  const session =
+    await getSession();
+
+  if (!session) {
+    return {
+      session: null,
+      response:
+        NextResponse.json(
+          {
+            error:
+              "Authentication required.",
+          },
+          {
+            status: 401,
+          }
+        ),
+    };
+  }
+
+  if (
+    session.role !== "Owner" &&
+    session.role !== "Office"
+  ) {
+    return {
+      session: null,
+      response:
+        NextResponse.json(
+          {
+            error:
+              "Office access required.",
+          },
+          {
+            status: 403,
+          }
+        ),
+    };
+  }
+
+  return {
+    session,
+    response: null,
+  };
+}
 
 export async function GET(
   request: Request
 ) {
   try {
-    const url = new URL(request.url);
-
-    const projectId = Number(
-      url.searchParams.get("projectId")
-    );
+    const auth =
+      await requireOfficeSession();
 
     if (
-      !Number.isInteger(projectId) ||
+      !auth.session ||
+      auth.response
+    ) {
+      return auth.response;
+    }
+
+    const session =
+      auth.session;
+
+    const url =
+      new URL(request.url);
+
+    const projectId =
+      Number(
+        url.searchParams.get(
+          "projectId"
+        )
+      );
+
+    if (
+      !Number.isInteger(
+        projectId
+      ) ||
       projectId <= 0
     ) {
       return NextResponse.json(
         {
-          error: "A valid project is required.",
+          error:
+            "A valid project is required.",
         },
         {
           status: 400,
@@ -32,14 +96,16 @@ export async function GET(
       await prisma.project.findFirst({
         where: {
           id: projectId,
-          companyId: COMPANY_ID,
+          companyId:
+            session.companyId,
         },
       });
 
     if (!project) {
       return NextResponse.json(
         {
-          error: "Project not found.",
+          error:
+            "Project not found.",
         },
         {
           status: 404,
@@ -51,10 +117,17 @@ export async function GET(
       await prisma.employeeProject.findMany({
         where: {
           projectId,
+
+          employee: {
+            companyId:
+              session.companyId,
+          },
         },
+
         include: {
           employee: true,
         },
+
         orderBy: {
           employee: {
             lastName: "asc",
@@ -66,12 +139,18 @@ export async function GET(
       assignments.map(
         ({ employee }) => ({
           id: employee.id,
-          firstName: employee.firstName,
-          lastName: employee.lastName,
-          email: employee.email,
-          phone: employee.phone,
-          role: employee.role,
-          active: employee.active,
+          firstName:
+            employee.firstName,
+          lastName:
+            employee.lastName,
+          email:
+            employee.email,
+          phone:
+            employee.phone,
+          role:
+            employee.role,
+          active:
+            employee.active,
         })
       )
     );
@@ -97,18 +176,40 @@ export async function POST(
   request: Request
 ) {
   try {
-    const body = await request.json();
-
-    const projectId =
-      Number(body.projectId);
-
-    const employeeId =
-      Number(body.employeeId);
+    const auth =
+      await requireOfficeSession();
 
     if (
-      !Number.isInteger(projectId) ||
+      !auth.session ||
+      auth.response
+    ) {
+      return auth.response;
+    }
+
+    const session =
+      auth.session;
+
+    const body =
+      await request.json();
+
+    const projectId =
+      Number(
+        body.projectId
+      );
+
+    const employeeId =
+      Number(
+        body.employeeId
+      );
+
+    if (
+      !Number.isInteger(
+        projectId
+      ) ||
       projectId <= 0 ||
-      !Number.isInteger(employeeId) ||
+      !Number.isInteger(
+        employeeId
+      ) ||
       employeeId <= 0
     ) {
       return NextResponse.json(
@@ -126,7 +227,8 @@ export async function POST(
       await prisma.project.findFirst({
         where: {
           id: projectId,
-          companyId: COMPANY_ID,
+          companyId:
+            session.companyId,
         },
       });
 
@@ -161,7 +263,8 @@ export async function POST(
       await prisma.employee.findFirst({
         where: {
           id: employeeId,
-          companyId: COMPANY_ID,
+          companyId:
+            session.companyId,
           active: true,
         },
       });
@@ -210,10 +313,13 @@ export async function POST(
     return NextResponse.json(
       {
         success: true,
+
         employee: {
           id: employee.id,
-          firstName: employee.firstName,
-          lastName: employee.lastName,
+          firstName:
+            employee.firstName,
+          lastName:
+            employee.lastName,
         },
       },
       {
@@ -242,7 +348,21 @@ export async function DELETE(
   request: Request
 ) {
   try {
-    const url = new URL(request.url);
+    const auth =
+      await requireOfficeSession();
+
+    if (
+      !auth.session ||
+      auth.response
+    ) {
+      return auth.response;
+    }
+
+    const session =
+      auth.session;
+
+    const url =
+      new URL(request.url);
 
     const projectId =
       Number(
@@ -259,9 +379,13 @@ export async function DELETE(
       );
 
     if (
-      !Number.isInteger(projectId) ||
+      !Number.isInteger(
+        projectId
+      ) ||
       projectId <= 0 ||
-      !Number.isInteger(employeeId) ||
+      !Number.isInteger(
+        employeeId
+      ) ||
       employeeId <= 0
     ) {
       return NextResponse.json(
@@ -279,7 +403,8 @@ export async function DELETE(
       await prisma.project.findFirst({
         where: {
           id: projectId,
-          companyId: COMPANY_ID,
+          companyId:
+            session.companyId,
         },
       });
 
@@ -306,6 +431,31 @@ export async function DELETE(
         },
         {
           status: 409,
+        }
+      );
+    }
+
+    const employee =
+      await prisma.employee.findFirst({
+        where: {
+          id: employeeId,
+          companyId:
+            session.companyId,
+        },
+
+        select: {
+          id: true,
+        },
+      });
+
+    if (!employee) {
+      return NextResponse.json(
+        {
+          error:
+            "Employee not found.",
+        },
+        {
+          status: 404,
         }
       );
     }

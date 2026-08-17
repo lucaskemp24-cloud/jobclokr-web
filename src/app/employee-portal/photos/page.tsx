@@ -13,6 +13,12 @@ import {
   useSearchParams,
 } from "next/navigation";
 
+import {
+  Camera,
+  CameraResultType,
+  CameraSource,
+} from "@capacitor/camera";
+
 import EmployeeLayout from "@/components/layout/EmployeeLayout";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/ToastProvider";
@@ -228,11 +234,6 @@ function EmployeeJobPhotosContent() {
 
   const { showToast } =
     useToast();
-
-  const cameraInputRef =
-    useRef<HTMLInputElement | null>(
-      null
-    );
 
   const libraryInputRef =
     useRef<HTMLInputElement | null>(
@@ -543,6 +544,75 @@ function EmployeeJobPhotosContent() {
         error instanceof Error
           ? error.message
           : "One or more photos could not be loaded.",
+        "error"
+      );
+    }
+  }
+
+  async function handleTakePhoto() {
+    try {
+      const photo =
+        await Camera.getPhoto({
+          quality: 85,
+          allowEditing: false,
+          resultType:
+            CameraResultType.DataUrl,
+          source:
+            CameraSource.Camera,
+          saveToGallery: false,
+          correctOrientation: true,
+        });
+
+      if (!photo.dataUrl) {
+        throw new Error(
+          "The photo could not be loaded."
+        );
+      }
+
+      const timestamp =
+        Date.now();
+
+      const newPhoto: PendingPhoto = {
+        id: timestamp,
+        imageData:
+          photo.dataUrl,
+        fileName:
+          `job-photo-${timestamp}.${photo.format || "jpeg"}`,
+        note: "",
+      };
+
+      setPendingPhotos(
+        (currentPhotos) => [
+          ...currentPhotos,
+          newPhoto,
+        ]
+      );
+
+      showToast(
+        "Photo ready to save.",
+        "success"
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "";
+
+      if (
+        message
+          .toLowerCase()
+          .includes("cancel")
+      ) {
+        return;
+      }
+
+      console.error(
+        "Take photo failed:",
+        error
+      );
+
+      showToast(
+        "Unable to take photo.",
         "error"
       );
     }
@@ -875,19 +945,6 @@ function EmployeeJobPhotosContent() {
 
           <input
             ref={
-              cameraInputRef
-            }
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={
-              handlePhotoSelection
-            }
-            className="hidden"
-          />
-
-          <input
-            ref={
               libraryInputRef
             }
             type="file"
@@ -903,7 +960,7 @@ function EmployeeJobPhotosContent() {
             <button
               type="button"
               onClick={() =>
-                cameraInputRef.current?.click()
+                void handleTakePhoto()
               }
               className="min-h-14 rounded-xl bg-blue-600 px-4 font-bold text-white hover:bg-blue-700"
             >

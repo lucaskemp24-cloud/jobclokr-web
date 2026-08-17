@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
+import { getSession } from "@/lib/session";
 
-const COMPANY_ID = 1;
 const MAX_FILE_DATA_LENGTH = 8_000_000;
 
 function serializeDocument(document: {
@@ -33,19 +33,42 @@ function serializeDocument(document: {
     fileUrl: document.fileUrl,
     fileType: document.fileType ?? "",
     note: document.note ?? "",
-    createdAt: document.createdAt.toISOString(),
+    createdAt:
+      document.createdAt.toISOString(),
   };
 }
 
-export async function GET(request: Request) {
+export async function GET(
+  request: Request
+) {
   try {
-    const url = new URL(request.url);
+    const session =
+      await getSession();
+
+    if (!session) {
+      return NextResponse.json(
+        {
+          error:
+            "Authentication required.",
+        },
+        {
+          status: 401,
+        }
+      );
+    }
+
+    const url =
+      new URL(request.url);
 
     const projectIdValue =
-      url.searchParams.get("projectId");
+      url.searchParams.get(
+        "projectId"
+      );
 
     const employeeIdValue =
-      url.searchParams.get("employeeId");
+      url.searchParams.get(
+        "employeeId"
+      );
 
     const where: {
       projectId?: number;
@@ -53,60 +76,183 @@ export async function GET(request: Request) {
       project?: {
         companyId: number;
       };
+      OR?: Array<
+        | {
+            project: {
+              assignments: {
+                some: {
+                  employeeId: number;
+                };
+              };
+            };
+          }
+        | {
+            project: {
+              scheduleAssignments: {
+                some: {
+                  employees: {
+                    some: {
+                      employeeId: number;
+                    };
+                  };
+                };
+              };
+            };
+          }
+      >;
     } = {
       project: {
-        companyId: COMPANY_ID,
+        companyId:
+          session.companyId,
       },
     };
 
     if (projectIdValue) {
       const projectId =
-        Number(projectIdValue);
+        Number(
+          projectIdValue
+        );
 
       if (
-        !Number.isInteger(projectId) ||
+        !Number.isInteger(
+          projectId
+        ) ||
         projectId <= 0
       ) {
         return NextResponse.json(
-          { error: "Invalid project." },
-          { status: 400 }
+          {
+            error:
+              "Invalid project.",
+          },
+          {
+            status: 400,
+          }
         );
       }
 
-      where.projectId = projectId;
+      where.projectId =
+        projectId;
     }
 
-    if (employeeIdValue) {
+    if (
+      session.role ===
+      "Employee"
+    ) {
+      if (employeeIdValue) {
+        const requestedEmployeeId =
+          Number(
+            employeeIdValue
+          );
+
+        if (
+          !Number.isInteger(
+            requestedEmployeeId
+          ) ||
+          requestedEmployeeId <= 0
+        ) {
+          return NextResponse.json(
+            {
+              error:
+                "Invalid employee.",
+            },
+            {
+              status: 400,
+            }
+          );
+        }
+
+        if (
+          requestedEmployeeId !==
+          session.employeeId
+        ) {
+          return NextResponse.json(
+            {
+              error:
+                "You cannot access another employee's documents.",
+            },
+            {
+              status: 403,
+            }
+          );
+        }
+
+        where.employeeId =
+          session.employeeId;
+      }
+
+      where.OR = [
+        {
+          project: {
+            assignments: {
+              some: {
+                employeeId:
+                  session.employeeId,
+              },
+            },
+          },
+        },
+        {
+          project: {
+            scheduleAssignments: {
+              some: {
+                employees: {
+                  some: {
+                    employeeId:
+                      session.employeeId,
+                  },
+                },
+              },
+            },
+          },
+        },
+      ];
+    } else if (
+      employeeIdValue
+    ) {
       const employeeId =
-        Number(employeeIdValue);
+        Number(
+          employeeIdValue
+        );
 
       if (
-        !Number.isInteger(employeeId) ||
+        !Number.isInteger(
+          employeeId
+        ) ||
         employeeId <= 0
       ) {
         return NextResponse.json(
-          { error: "Invalid employee." },
-          { status: 400 }
+          {
+            error:
+              "Invalid employee.",
+          },
+          {
+            status: 400,
+          }
         );
       }
 
-      where.employeeId = employeeId;
+      where.employeeId =
+        employeeId;
     }
 
     const documents =
       await prisma.projectDocument.findMany({
         where,
+
         include: {
           employee: true,
           project: true,
         },
+
         orderBy: {
           createdAt: "desc",
         },
       });
 
     return NextResponse.json(
-      documents.map(serializeDocument)
+      documents.map(
+        serializeDocument
+      )
     );
   } catch (error) {
     console.error(
@@ -115,68 +261,111 @@ export async function GET(request: Request) {
     );
 
     return NextResponse.json(
-      { error: "Unable to load project documents." },
-      { status: 500 }
+      {
+        error:
+          "Unable to load project documents.",
+      },
+      {
+        status: 500,
+      }
     );
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(
+  request: Request
+) {
   try {
+    const session =
+      await getSession();
+
+    if (!session) {
+      return NextResponse.json(
+        {
+          error:
+            "Authentication required.",
+        },
+        {
+          status: 401,
+        }
+      );
+    }
+
     const body =
       await request.json();
 
     const projectId =
-      Number(body.projectId);
+      Number(
+        body.projectId
+      );
 
-    const employeeId =
-      Number(body.employeeId);
+    const requestedEmployeeId =
+      Number(
+        body.employeeId
+      );
 
     const fileName =
-      String(body.fileName ?? "").trim();
+      String(
+        body.fileName ?? ""
+      ).trim();
 
     const fileUrl =
-      String(body.fileUrl ?? "");
+      String(
+        body.fileUrl ?? ""
+      );
 
     const fileType =
-      String(body.fileType ?? "").trim();
+      String(
+        body.fileType ?? ""
+      ).trim();
 
     const note =
-      String(body.note ?? "").trim();
+      String(
+        body.note ?? ""
+      ).trim();
 
     if (
-      !Number.isInteger(projectId) ||
+      !Number.isInteger(
+        projectId
+      ) ||
       projectId <= 0
     ) {
       return NextResponse.json(
-        { error: "A valid project is required." },
-        { status: 400 }
-      );
-    }
-
-    if (
-      !Number.isInteger(employeeId) ||
-      employeeId <= 0
-    ) {
-      return NextResponse.json(
-        { error: "A valid employee is required." },
-        { status: 400 }
+        {
+          error:
+            "A valid project is required.",
+        },
+        {
+          status: 400,
+        }
       );
     }
 
     if (!fileName) {
       return NextResponse.json(
-        { error: "A file name is required." },
-        { status: 400 }
+        {
+          error:
+            "A file name is required.",
+        },
+        {
+          status: 400,
+        }
       );
     }
 
     if (
-      !fileUrl.startsWith("data:")
+      !fileUrl.startsWith(
+        "data:"
+      )
     ) {
       return NextResponse.json(
-        { error: "A valid file is required." },
-        { status: 400 }
+        {
+          error:
+            "A valid file is required.",
+        },
+        {
+          status: 400,
+        }
       );
     }
 
@@ -189,22 +378,81 @@ export async function POST(request: Request) {
           error:
             "The selected file is too large. Try a file smaller than about 5 MB.",
         },
-        { status: 413 }
+        {
+          status: 413,
+        }
       );
     }
 
-    const [project, employee] =
+    let employeeId:
+      number;
+
+    if (
+      session.role ===
+      "Employee"
+    ) {
+      if (
+        Number.isInteger(
+          requestedEmployeeId
+        ) &&
+        requestedEmployeeId >
+          0 &&
+        requestedEmployeeId !==
+          session.employeeId
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "You cannot upload documents for another employee.",
+          },
+          {
+            status: 403,
+          }
+        );
+      }
+
+      employeeId =
+        session.employeeId;
+    } else {
+      if (
+        !Number.isInteger(
+          requestedEmployeeId
+        ) ||
+        requestedEmployeeId <= 0
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "A valid employee is required.",
+          },
+          {
+            status: 400,
+          }
+        );
+      }
+
+      employeeId =
+        requestedEmployeeId;
+    }
+
+    const [
+      project,
+      employee,
+    ] =
       await Promise.all([
         prisma.project.findFirst({
           where: {
             id: projectId,
-            companyId: COMPANY_ID,
+            companyId:
+              session.companyId,
           },
         }),
+
         prisma.employee.findFirst({
           where: {
             id: employeeId,
-            companyId: COMPANY_ID,
+            companyId:
+              session.companyId,
             active: true,
           },
         }),
@@ -212,8 +460,13 @@ export async function POST(request: Request) {
 
     if (!project) {
       return NextResponse.json(
-        { error: "Project not found." },
-        { status: 404 }
+        {
+          error:
+            "Project not found.",
+        },
+        {
+          status: 404,
+        }
       );
     }
 
@@ -223,7 +476,9 @@ export async function POST(request: Request) {
           error:
             "Active employee account not found.",
         },
-        { status: 404 }
+        {
+          status: 404,
+        }
       );
     }
 
@@ -239,14 +494,18 @@ export async function POST(request: Request) {
       await prisma.scheduleAssignmentEmployee.findFirst({
         where: {
           employeeId,
+
           assignment: {
             projectId,
-            companyId: COMPANY_ID,
+            companyId:
+              session.companyId,
           },
         },
       });
 
     if (
+      session.role ===
+        "Employee" &&
       !projectAssignment &&
       !scheduleAssignment
     ) {
@@ -255,7 +514,9 @@ export async function POST(request: Request) {
           error:
             "You are not assigned to this project.",
         },
-        { status: 403 }
+        {
+          status: 403,
+        }
       );
     }
 
@@ -266,11 +527,14 @@ export async function POST(request: Request) {
           employeeId,
           fileName,
           fileUrl,
+
           fileType:
             fileType || null,
+
           note:
             note || null,
         },
+
         include: {
           employee: true,
           project: true,
@@ -278,8 +542,12 @@ export async function POST(request: Request) {
       });
 
     return NextResponse.json(
-      serializeDocument(document),
-      { status: 201 }
+      serializeDocument(
+        document
+      ),
+      {
+        status: 201,
+      }
     );
   } catch (error) {
     console.error(
@@ -288,75 +556,199 @@ export async function POST(request: Request) {
     );
 
     return NextResponse.json(
-      { error: "Unable to save project document." },
-      { status: 500 }
+      {
+        error:
+          "Unable to save project document.",
+      },
+      {
+        status: 500,
+      }
     );
   }
 }
 
-export async function DELETE(request: Request) {
+export async function DELETE(
+  request: Request
+) {
   try {
+    const session =
+      await getSession();
+
+    if (!session) {
+      return NextResponse.json(
+        {
+          error:
+            "Authentication required.",
+        },
+        {
+          status: 401,
+        }
+      );
+    }
+
     const url =
-      new URL(request.url);
+      new URL(
+        request.url
+      );
 
     const id =
       Number(
-        url.searchParams.get("id")
+        url.searchParams.get(
+          "id"
+        )
       );
 
     const employeeIdValue =
-      url.searchParams.get("employeeId");
+      url.searchParams.get(
+        "employeeId"
+      );
 
     if (
       !Number.isInteger(id) ||
       id <= 0
     ) {
       return NextResponse.json(
-        { error: "A valid document is required." },
-        { status: 400 }
+        {
+          error:
+            "A valid document is required.",
+        },
+        {
+          status: 400,
+        }
       );
     }
 
-    const employeeId =
-      employeeIdValue
-        ? Number(employeeIdValue)
-        : null;
+    let employeeId:
+      number | null =
+        null;
 
     if (
-      employeeIdValue &&
-      (
-        !Number.isInteger(employeeId) ||
-        Number(employeeId) <= 0
-      )
+      session.role ===
+      "Employee"
     ) {
-      return NextResponse.json(
-        { error: "Invalid employee." },
-        { status: 400 }
-      );
+      if (
+        employeeIdValue
+      ) {
+        const requestedEmployeeId =
+          Number(
+            employeeIdValue
+          );
+
+        if (
+          !Number.isInteger(
+            requestedEmployeeId
+          ) ||
+          requestedEmployeeId <= 0
+        ) {
+          return NextResponse.json(
+            {
+              error:
+                "Invalid employee.",
+            },
+            {
+              status: 400,
+            }
+          );
+        }
+
+        if (
+          requestedEmployeeId !==
+          session.employeeId
+        ) {
+          return NextResponse.json(
+            {
+              error:
+                "You cannot delete another employee's document.",
+            },
+            {
+              status: 403,
+            }
+          );
+        }
+      }
+
+      employeeId =
+        session.employeeId;
+    } else if (
+      employeeIdValue
+    ) {
+      const requestedEmployeeId =
+        Number(
+          employeeIdValue
+        );
+
+      if (
+        !Number.isInteger(
+          requestedEmployeeId
+        ) ||
+        requestedEmployeeId <= 0
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Invalid employee.",
+          },
+          {
+            status: 400,
+          }
+        );
+      }
+
+      employeeId =
+        requestedEmployeeId;
     }
 
     const document =
       await prisma.projectDocument.findFirst({
         where: {
           id,
+
           ...(employeeId
-            ? { employeeId }
+            ? {
+                employeeId,
+              }
             : {}),
+
           project: {
-            companyId: COMPANY_ID,
+            companyId:
+              session.companyId,
           },
         },
       });
 
     if (!document) {
       return NextResponse.json(
-        { error: "Project document not found." },
-        { status: 404 }
+        {
+          error:
+            "Project document not found.",
+        },
+        {
+          status: 404,
+        }
+      );
+    }
+
+    if (
+      session.role ===
+        "Employee" &&
+      document.employeeId !==
+        session.employeeId
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "You cannot delete another employee's document.",
+        },
+        {
+          status: 403,
+        }
       );
     }
 
     await prisma.projectDocument.delete({
-      where: { id },
+      where: {
+        id,
+      },
     });
 
     return NextResponse.json({
@@ -369,8 +761,13 @@ export async function DELETE(request: Request) {
     );
 
     return NextResponse.json(
-      { error: "Unable to delete project document." },
-      { status: 500 }
+      {
+        error:
+          "Unable to delete project document.",
+      },
+      {
+        status: 500,
+      }
     );
   }
 }

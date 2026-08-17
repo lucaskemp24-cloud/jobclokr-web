@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">JobClokr</string>
+    <string name="title_activity_main">JobClokr</string>
+    <string name="package_name">com.jobclokr.app</string>
+    <string name="custom_url_scheme">com.jobclokr.app</string>
+</resources>

@@ -1,22 +1,80 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
+import { getSession } from "@/lib/session";
 
-const COMPANY_ID = 1;
+async function requireOfficeSession() {
+  const session =
+    await getSession();
+
+  if (!session) {
+    return {
+      session: null,
+      response:
+        NextResponse.json(
+          {
+            error:
+              "Authentication required.",
+          },
+          {
+            status: 401,
+          }
+        ),
+    };
+  }
+
+  if (
+    session.role !== "Owner" &&
+    session.role !== "Office"
+  ) {
+    return {
+      session: null,
+      response:
+        NextResponse.json(
+          {
+            error:
+              "Office access required.",
+          },
+          {
+            status: 403,
+          }
+        ),
+    };
+  }
+
+  return {
+    session,
+    response: null,
+  };
+}
 
 export async function GET() {
   try {
-    const customers = await prisma.customer.findMany({
-      where: {
-        companyId: COMPANY_ID,
-      },
+    const auth =
+      await requireOfficeSession();
 
-      orderBy: {
-        name: "asc",
-      },
-    });
+    if (
+      !auth.session ||
+      auth.response
+    ) {
+      return auth.response;
+    }
 
-    return NextResponse.json(customers);
+    const customers =
+      await prisma.customer.findMany({
+        where: {
+          companyId:
+            auth.session.companyId,
+        },
+
+        orderBy: {
+          name: "asc",
+        },
+      });
+
+    return NextResponse.json(
+      customers
+    );
   } catch (error) {
     console.error(
       "Failed to load customers:",
@@ -39,11 +97,23 @@ export async function POST(
   request: Request
 ) {
   try {
+    const auth =
+      await requireOfficeSession();
+
+    if (
+      !auth.session ||
+      auth.response
+    ) {
+      return auth.response;
+    }
+
     const body =
       await request.json();
 
     const name =
-      String(body.name ?? "").trim();
+      String(
+        body.name ?? ""
+      ).trim();
 
     const contactName =
       String(
@@ -51,13 +121,19 @@ export async function POST(
       ).trim();
 
     const phone =
-      String(body.phone ?? "").trim();
+      String(
+        body.phone ?? ""
+      ).trim();
 
     const email =
-      String(body.email ?? "").trim();
+      String(
+        body.email ?? ""
+      ).trim();
 
     const address =
-      String(body.address ?? "").trim();
+      String(
+        body.address ?? ""
+      ).trim();
 
     if (
       !name ||
@@ -78,7 +154,8 @@ export async function POST(
     const duplicate =
       await prisma.customer.findFirst({
         where: {
-          companyId: COMPANY_ID,
+          companyId:
+            auth.session.companyId,
 
           name: {
             equals: name,
@@ -103,12 +180,10 @@ export async function POST(
       await prisma.customer.create({
         data: {
           companyId:
-            COMPANY_ID,
+            auth.session.companyId,
 
           name,
-
           contactName,
-
           phone,
 
           email:
@@ -147,6 +222,16 @@ export async function PATCH(
   request: Request
 ) {
   try {
+    const auth =
+      await requireOfficeSession();
+
+    if (
+      !auth.session ||
+      auth.response
+    ) {
+      return auth.response;
+    }
+
     const body =
       await request.json();
 
@@ -154,7 +239,9 @@ export async function PATCH(
       Number(body.id);
 
     const name =
-      String(body.name ?? "").trim();
+      String(
+        body.name ?? ""
+      ).trim();
 
     const contactName =
       String(
@@ -162,13 +249,19 @@ export async function PATCH(
       ).trim();
 
     const phone =
-      String(body.phone ?? "").trim();
+      String(
+        body.phone ?? ""
+      ).trim();
 
     const email =
-      String(body.email ?? "").trim();
+      String(
+        body.email ?? ""
+      ).trim();
 
     const address =
-      String(body.address ?? "").trim();
+      String(
+        body.address ?? ""
+      ).trim();
 
     if (
       !Number.isInteger(id) ||
@@ -205,7 +298,9 @@ export async function PATCH(
       await prisma.customer.findFirst({
         where: {
           id,
-          companyId: COMPANY_ID,
+
+          companyId:
+            auth.session.companyId,
         },
       });
 
@@ -224,7 +319,8 @@ export async function PATCH(
     const duplicate =
       await prisma.customer.findFirst({
         where: {
-          companyId: COMPANY_ID,
+          companyId:
+            auth.session.companyId,
 
           id: {
             not: id,
@@ -293,12 +389,26 @@ export async function DELETE(
   request: Request
 ) {
   try {
+    const auth =
+      await requireOfficeSession();
+
+    if (
+      !auth.session ||
+      auth.response
+    ) {
+      return auth.response;
+    }
+
     const url =
-      new URL(request.url);
+      new URL(
+        request.url
+      );
 
     const id =
       Number(
-        url.searchParams.get("id")
+        url.searchParams.get(
+          "id"
+        )
       );
 
     if (
@@ -320,7 +430,9 @@ export async function DELETE(
       await prisma.customer.findFirst({
         where: {
           id,
-          companyId: COMPANY_ID,
+
+          companyId:
+            auth.session.companyId,
         },
 
         include: {
@@ -345,7 +457,8 @@ export async function DELETE(
     }
 
     if (
-      customer._count.projects > 0
+      customer._count.projects >
+      0
     ) {
       return NextResponse.json(
         {

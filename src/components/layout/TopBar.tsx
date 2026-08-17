@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
 
 import {
-  loadAuthUser,
   logoutUser,
-  type AuthUser,
 } from "@/lib/auth";
 
 import {
@@ -18,7 +19,28 @@ import {
   type ThemeSetting,
 } from "@/lib/settings";
 
-function getThemeIcon(theme: ThemeSetting) {
+type SessionUser = {
+  employeeId: number;
+  companyId: number;
+  name: string;
+  role:
+    | "Owner"
+    | "Office"
+    | "Employee";
+};
+
+type SessionResponse = {
+  authenticated: boolean;
+  user: SessionUser | null;
+};
+
+type TopBarProps = {
+  onMenuClick?: () => void;
+};
+
+function getThemeIcon(
+  theme: ThemeSetting
+) {
   if (theme === "Dark") {
     return "☀️";
   }
@@ -30,23 +52,75 @@ function getThemeIcon(theme: ThemeSetting) {
   return "🌓";
 }
 
-export default function TopBar() {
+export default function TopBar({
+  onMenuClick,
+}: TopBarProps) {
   const router = useRouter();
 
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [settings, setSettings] =
-    useState<CompanySettings | null>(null);
+  const [user, setUser] =
+    useState<SessionUser | null>(
+      null
+    );
+
+  const [
+    settings,
+    setSettings,
+  ] =
+    useState<CompanySettings | null>(
+      null
+    );
 
   useEffect(() => {
-    setUser(loadAuthUser());
-    setSettings(loadSettings());
+    async function loadSessionUser() {
+      try {
+        const response =
+          await fetch(
+            "/api/session",
+            {
+              cache: "no-store",
+            }
+          );
 
-    function handleSettingsChange(event: Event) {
+        const data =
+          (await response.json()) as
+            SessionResponse;
+
+        if (
+          response.ok &&
+          data.authenticated &&
+          data.user
+        ) {
+          setUser(
+            data.user
+          );
+        } else {
+          setUser(null);
+        }
+      } catch (error) {
+        console.error(
+          "Top bar session load failed:",
+          error
+        );
+
+        setUser(null);
+      }
+    }
+
+    void loadSessionUser();
+
+    setSettings(
+      loadSettings()
+    );
+
+    function handleSettingsChange(
+      event: Event
+    ) {
       const customEvent =
         event as CustomEvent<CompanySettings>;
 
       setSettings(
-        customEvent.detail ?? loadSettings()
+        customEvent.detail ??
+          loadSettings()
       );
     }
 
@@ -63,65 +137,112 @@ export default function TopBar() {
     };
   }, []);
 
-  function handleLogout() {
+  async function handleLogout() {
+    try {
+      await fetch(
+        "/api/logout",
+        {
+          method: "POST",
+        }
+      );
+    } catch (error) {
+      console.error(
+        "Server logout failed:",
+        error
+      );
+    }
+
     logoutUser();
-    router.push("/login");
+
+    router.replace(
+      "/login"
+    );
+
     router.refresh();
   }
 
   function handleThemeToggle() {
     const currentSettings =
-      settings ?? loadSettings();
+      settings ??
+      loadSettings();
 
-    const nextTheme: ThemeSetting =
-      currentSettings.theme === "Dark"
+    const nextTheme:
+      ThemeSetting =
+      currentSettings.theme ===
+      "Dark"
         ? "Light"
         : "Dark";
 
-    const updatedSettings: CompanySettings = {
+    const updatedSettings:
+      CompanySettings = {
       ...currentSettings,
       theme: nextTheme,
     };
 
-    setSettings(updatedSettings);
-    saveSettings(updatedSettings);
-    applyTheme(nextTheme);
+    setSettings(
+      updatedSettings
+    );
+
+    saveSettings(
+      updatedSettings
+    );
+
+    applyTheme(
+      nextTheme
+    );
   }
 
   return (
-    <header className="flex min-h-16 items-center justify-between border-b border-slate-200 bg-white px-6 transition-colors dark:border-slate-700 dark:bg-slate-900">
-      <div>
-        <h2 className="text-xl font-semibold">
-          {settings?.companyName || "JobClokr"}
+    <header className="sticky top-0 z-20 flex min-h-16 items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 transition-colors dark:border-slate-700 dark:bg-slate-900 sm:px-5 lg:px-6">
+      <div className="flex min-w-0 items-center gap-3">
+        <button
+          type="button"
+          onClick={
+            onMenuClick
+          }
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-xl hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800 lg:hidden"
+          aria-label="Open navigation menu"
+        >
+          ☰
+        </button>
+
+        <h2 className="truncate text-base font-semibold sm:text-lg lg:text-xl">
+          {settings?.companyName ||
+            "JobClokr"}
         </h2>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex shrink-0 items-center gap-1 sm:gap-2 lg:gap-4">
         <button
           type="button"
-          onClick={handleThemeToggle}
-          className="rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-slate-800"
+          onClick={
+            handleThemeToggle
+          }
+          className="flex h-10 w-10 items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
           aria-label="Toggle light and dark theme"
           title={`Current theme: ${
-            settings?.theme ?? "System"
+            settings?.theme ??
+            "System"
           }`}
         >
           {getThemeIcon(
-            settings?.theme ?? "System"
+            settings?.theme ??
+              "System"
           )}
         </button>
 
         <button
           type="button"
-          className="rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-slate-800"
+          className="hidden h-10 w-10 items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 sm:flex"
           aria-label="Notifications"
         >
           🔔
         </button>
 
-        <div className="text-right">
-          <p className="font-medium">
-            {user?.name ?? "Not signed in"}
+        <div className="hidden text-right md:block">
+          <p className="max-w-40 truncate font-medium">
+            {user?.name ??
+              "Not signed in"}
           </p>
 
           {user && (
@@ -134,10 +255,18 @@ export default function TopBar() {
         {user && (
           <button
             type="button"
-            onClick={handleLogout}
-            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+            onClick={() =>
+              void handleLogout()
+            }
+            className="rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 sm:px-4"
           >
-            Logout
+            <span className="sm:hidden">
+              Exit
+            </span>
+
+            <span className="hidden sm:inline">
+              Logout
+            </span>
           </button>
         )}
       </div>

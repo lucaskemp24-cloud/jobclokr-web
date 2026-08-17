@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
-
-const COMPANY_ID = 1;
+import { getSession } from "@/lib/session";
 
 type RouteContext = {
   params: Promise<{
@@ -15,17 +14,52 @@ export async function GET(
   context: RouteContext
 ) {
   try {
-    const { id } = await context.params;
+    const session =
+      await getSession();
 
-    const customerId = Number(id);
+    if (!session) {
+      return NextResponse.json(
+        {
+          error:
+            "Authentication required.",
+        },
+        {
+          status: 401,
+        }
+      );
+    }
 
     if (
-      !Number.isInteger(customerId) ||
+      session.role !== "Owner" &&
+      session.role !== "Office"
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Office access required.",
+        },
+        {
+          status: 403,
+        }
+      );
+    }
+
+    const { id } =
+      await context.params;
+
+    const customerId =
+      Number(id);
+
+    if (
+      !Number.isInteger(
+        customerId
+      ) ||
       customerId <= 0
     ) {
       return NextResponse.json(
         {
-          error: "Invalid customer.",
+          error:
+            "Invalid customer.",
         },
         {
           status: 400,
@@ -36,15 +70,19 @@ export async function GET(
     const customer =
       await prisma.customer.findFirst({
         where: {
-          id: customerId,
-          companyId: COMPANY_ID,
+          id:
+            customerId,
+
+          companyId:
+            session.companyId,
         },
       });
 
     if (!customer) {
       return NextResponse.json(
         {
-          error: "Customer not found.",
+          error:
+            "Customer not found.",
         },
         {
           status: 404,
@@ -52,7 +90,9 @@ export async function GET(
       );
     }
 
-    return NextResponse.json(customer);
+    return NextResponse.json(
+      customer
+    );
   } catch (error) {
     console.error(
       "Failed to load customer:",
