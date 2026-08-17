@@ -7,6 +7,8 @@ import {
 
 import { cookies } from "next/headers";
 
+import { prisma } from "@/lib/prisma";
+
 export type SessionRole =
   | "Owner"
   | "Office"
@@ -154,6 +156,20 @@ function decodeSession(
   }
 }
 
+function subscriptionAllowsAccess(
+  status:
+    | "INCOMPLETE"
+    | "TRIALING"
+    | "ACTIVE"
+    | "PAST_DUE"
+    | "CANCELED"
+) {
+  return (
+    status === "ACTIVE" ||
+    status === "TRIALING"
+  );
+}
+
 export async function createSession(
   user: SessionUser
 ) {
@@ -217,20 +233,90 @@ export async function getSession() {
     return null;
   }
 
-  console.log(
-    "[SESSION] Cookie received.",
-    {
-      length:
-        value.length,
-    }
-  );
-
   const session =
     decodeSession(value);
 
   if (!session) {
     console.log(
       "[SESSION] Cookie exists but could not be decoded or signature validation failed."
+    );
+
+    return null;
+  }
+
+  const company =
+    await prisma.company.findUnique({
+      where: {
+        id:
+          session.companyId,
+      },
+
+      select: {
+        id: true,
+        subscriptionStatus:
+          true,
+      },
+    });
+
+  if (!company) {
+    console.log(
+      "[SESSION] Company no longer exists.",
+      {
+        companyId:
+          session.companyId,
+      }
+    );
+
+    return null;
+  }
+
+  if (
+    !subscriptionAllowsAccess(
+      company.subscriptionStatus
+    )
+  ) {
+    console.log(
+      "[SESSION] Company subscription does not allow access.",
+      {
+        companyId:
+          session.companyId,
+
+        subscriptionStatus:
+          company.subscriptionStatus,
+      }
+    );
+
+    return null;
+  }
+
+  const employee =
+    await prisma.employee.findFirst({
+      where: {
+        id:
+          session.employeeId,
+
+        companyId:
+          session.companyId,
+
+        active:
+          true,
+      },
+
+      select: {
+        id: true,
+      },
+    });
+
+  if (!employee) {
+    console.log(
+      "[SESSION] Employee no longer has access.",
+      {
+        employeeId:
+          session.employeeId,
+
+        companyId:
+          session.companyId,
+      }
     );
 
     return null;
@@ -247,6 +333,9 @@ export async function getSession() {
 
       role:
         session.role,
+
+      subscriptionStatus:
+        company.subscriptionStatus,
     }
   );
 

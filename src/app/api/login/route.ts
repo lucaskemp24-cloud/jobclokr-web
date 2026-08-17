@@ -22,6 +22,20 @@ function getSessionRole(
   return "Employee" as const;
 }
 
+function companyHasAccess(
+  status:
+    | "INCOMPLETE"
+    | "TRIALING"
+    | "ACTIVE"
+    | "PAST_DUE"
+    | "CANCELED"
+) {
+  return (
+    status === "ACTIVE" ||
+    status === "TRIALING"
+  );
+}
+
 export async function POST(
   request: Request
 ) {
@@ -74,6 +88,8 @@ export async function POST(
           id: true,
           name: true,
           code: true,
+          subscriptionStatus:
+            true,
         },
       });
 
@@ -85,6 +101,26 @@ export async function POST(
         },
         {
           status: 401,
+        }
+      );
+    }
+
+    if (
+      !companyHasAccess(
+        company.subscriptionStatus
+      )
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "This company's JobClokr subscription is not active. Please contact your company administrator.",
+          code:
+            "SUBSCRIPTION_INACTIVE",
+          subscriptionStatus:
+            company.subscriptionStatus,
+        },
+        {
+          status: 403,
         }
       );
     }
@@ -195,6 +231,9 @@ export async function POST(
 
         code:
           company.code,
+
+        subscriptionStatus:
+          company.subscriptionStatus,
       },
     });
   } catch (error) {

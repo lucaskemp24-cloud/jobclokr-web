@@ -20,10 +20,27 @@ enum AssignmentPriority {
   EMERGENCY
 }
 
+enum SubscriptionStatus {
+  INCOMPLETE
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
 model Company {
-  id        Int      @id @default(autoincrement())
-  name      String
-  code      String   @unique
+  id   Int    @id @default(autoincrement())
+  name String
+  code String @unique
+
+  subscriptionStatus SubscriptionStatus @default(INCOMPLETE)
+
+  stripeCustomerId     String? @unique
+  stripeSubscriptionId String? @unique
+
+  subscriptionCurrentPeriodStart DateTime?
+  subscriptionCurrentPeriodEnd   DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
