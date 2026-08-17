@@ -13,6 +13,7 @@
     "@capacitor/android": "^8.5.0",
     "@capacitor/camera": "^8.2.2",
     "@capacitor/core": "^8.5.0",
+    "@capacitor/ios": "^8.5.0",
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
     "bcryptjs": "^3.0.3",
