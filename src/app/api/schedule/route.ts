@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
-import { getSession } from "@/lib/session";
+import {
+  getSession,
+  isCompanySession,
+} from "@/lib/session";
 
 async function requireOfficeSession() {
   const session =
@@ -24,8 +27,30 @@ async function requireOfficeSession() {
   }
 
   if (
-    session.role !== "Owner" &&
-    session.role !== "Office"
+    !isCompanySession(
+      session
+    )
+  ) {
+    return {
+      session: null,
+      response:
+        NextResponse.json(
+          {
+            error:
+              "Company access required.",
+          },
+          {
+            status: 403,
+          }
+        ),
+    };
+  }
+
+  if (
+    session.role !==
+      "Owner" &&
+    session.role !==
+      "Office"
   ) {
     return {
       session: null,
@@ -95,7 +120,10 @@ function normalizePriority(
     return "HIGH";
   }
 
-  if (value === "EMERGENCY") {
+  if (
+    value ===
+    "EMERGENCY"
+  ) {
     return "EMERGENCY";
   }
 
@@ -121,9 +149,26 @@ export async function GET(
       );
     }
 
-    const url = new URL(
-      request.url
-    );
+    if (
+      !isCompanySession(
+        session
+      )
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Company access required.",
+        },
+        {
+          status: 403,
+        }
+      );
+    }
+
+    const url =
+      new URL(
+        request.url
+      );
 
     const dateValue =
       url.searchParams.get(
@@ -144,7 +189,8 @@ export async function GET(
         };
       };
     } = {
-      companyId: session.companyId,
+      companyId:
+        session.companyId,
     };
 
     if (dateValue) {
@@ -165,14 +211,17 @@ export async function GET(
         );
       }
 
-      where.date = date;
+      where.date =
+        date;
     }
 
     if (
       session.role ===
       "Employee"
     ) {
-      if (employeeIdValue) {
+      if (
+        employeeIdValue
+      ) {
         const requestedEmployeeId =
           Number(
             employeeIdValue
@@ -182,7 +231,8 @@ export async function GET(
           !Number.isInteger(
             requestedEmployeeId
           ) ||
-          requestedEmployeeId <= 0
+          requestedEmployeeId <=
+            0
         ) {
           return NextResponse.json(
             {
@@ -229,7 +279,8 @@ export async function GET(
         !Number.isInteger(
           employeeId
         ) ||
-        employeeId <= 0
+        employeeId <=
+          0
       ) {
         return NextResponse.json(
           {
@@ -252,73 +303,104 @@ export async function GET(
     const assignments =
       await prisma.scheduleAssignment.findMany({
         where,
+
         include: {
           project: {
             include: {
-              customer: true,
+              customer:
+                true,
             },
           },
+
           employees: {
             include: {
-              employee: true,
+              employee:
+                true,
             },
+
             orderBy: {
-              employeeId: "asc",
+              employeeId:
+                "asc",
             },
           },
         },
+
         orderBy: [
           {
-            date: "asc",
+            date:
+              "asc",
           },
           {
-            projectId: "asc",
+            projectId:
+              "asc",
           },
         ],
       });
 
     return NextResponse.json(
       assignments.map(
-        (assignment) => ({
-          id: assignment.id,
+        (
+          assignment
+        ) => ({
+          id:
+            assignment.id,
+
           date:
             formatDateOnly(
               assignment.date
             ),
+
           projectId:
             assignment.projectId,
+
           projectName:
             assignment.project.name,
+
           customerId:
             assignment.project.customerId,
+
           customerName:
             assignment.project.customer.name,
+
           address:
             assignment.project.address ??
             "",
+
           status:
             assignment.project.status,
+
           priority:
             assignment.priority,
+
           notes:
             assignment.notes ??
             "",
+
           employeeIds:
             assignment.employees.map(
-              (item) =>
+              (
+                item
+              ) =>
                 item.employeeId
             ),
+
           employees:
             assignment.employees.map(
-              (item) => ({
+              (
+                item
+              ) => ({
                 id:
                   item.employee.id,
+
                 firstName:
                   item.employee.firstName,
+
                 lastName:
                   item.employee.lastName,
+
                 role:
                   item.employee.role,
+
                 active:
                   item.employee.active,
               })
@@ -379,20 +461,36 @@ export async function POST(
         dateValue
       );
 
-    const rawEmployeeIds: unknown[] =
-      Array.isArray(body.employeeIds)
+    const rawEmployeeIds:
+      unknown[] =
+      Array.isArray(
+        body.employeeIds
+      )
         ? body.employeeIds
         : [];
 
-    const employeeIds: number[] =
+    const employeeIds:
+      number[] =
       Array.from(
         new Set<number>(
           rawEmployeeIds
-            .map((value) => Number(value))
+            .map(
+              (
+                value
+              ) =>
+                Number(
+                  value
+                )
+            )
             .filter(
-              (employeeId): employeeId is number =>
-                Number.isInteger(employeeId) &&
-                employeeId > 0
+              (
+                employeeId
+              ): employeeId is number =>
+                Number.isInteger(
+                  employeeId
+                ) &&
+                employeeId >
+                  0
             )
         )
       );
@@ -411,7 +509,8 @@ export async function POST(
       !Number.isInteger(
         projectId
       ) ||
-      projectId <= 0
+      projectId <=
+        0
     ) {
       return NextResponse.json(
         {
@@ -437,7 +536,8 @@ export async function POST(
     }
 
     if (
-      employeeIds.length === 0
+      employeeIds.length ===
+      0
     ) {
       return NextResponse.json(
         {
@@ -453,8 +553,11 @@ export async function POST(
     const project =
       await prisma.project.findFirst({
         where: {
-          id: projectId,
-          companyId: session.companyId,
+          id:
+            projectId,
+
+          companyId:
+            session.companyId,
         },
       });
 
@@ -489,12 +592,17 @@ export async function POST(
       await prisma.employee.findMany({
         where: {
           id: {
-            in: employeeIds,
+            in:
+              employeeIds,
           },
+
           companyId:
             session.companyId,
-          active: true,
+
+          active:
+            true,
         },
+
         select: {
           id: true,
         },
@@ -517,30 +625,44 @@ export async function POST(
 
     const assignment =
       await prisma.$transaction(
-        async (tx) => {
+        async (
+          tx
+        ) => {
           const savedAssignment =
             await tx.scheduleAssignment.upsert({
               where: {
-                companyId_projectId_date: {
-                  companyId:
-                    session.companyId,
-                  projectId,
-                  date,
-                },
+                companyId_projectId_date:
+                  {
+                    companyId:
+                      session.companyId,
+
+                    projectId,
+
+                    date,
+                  },
               },
+
               create: {
                 companyId:
                   session.companyId,
+
                 projectId,
+
                 date,
+
                 priority,
+
                 notes:
-                  notes || null,
+                  notes ||
+                  null,
               },
+
               update: {
                 priority,
+
                 notes:
-                  notes || null,
+                  notes ||
+                  null,
               },
             });
 
@@ -554,9 +676,12 @@ export async function POST(
           await tx.scheduleAssignmentEmployee.createMany({
             data:
               employeeIds.map(
-                (employeeId) => ({
+                (
+                  employeeId
+                ) => ({
                   assignmentId:
                     savedAssignment.id,
+
                   employeeId,
                 })
               ),
@@ -567,15 +692,19 @@ export async function POST(
               id:
                 savedAssignment.id,
             },
+
             include: {
               project: {
                 include: {
-                  customer: true,
+                  customer:
+                    true,
                 },
               },
+
               employees: {
                 include: {
-                  employee: true,
+                  employee:
+                    true,
                 },
               },
             },
@@ -587,44 +716,63 @@ export async function POST(
       {
         id:
           assignment.id,
+
         date:
           formatDateOnly(
             assignment.date
           ),
+
         projectId:
           assignment.projectId,
+
         projectName:
           assignment.project.name,
+
         customerId:
           assignment.project.customerId,
+
         customerName:
           assignment.project.customer.name,
+
         address:
           assignment.project.address ??
           "",
+
         status:
           assignment.project.status,
+
         priority:
           assignment.priority,
+
         notes:
           assignment.notes ??
           "",
+
         employeeIds:
           assignment.employees.map(
-            (item) =>
+            (
+              item
+            ) =>
               item.employeeId
           ),
+
         employees:
           assignment.employees.map(
-            (item) => ({
+            (
+              item
+            ) => ({
               id:
                 item.employee.id,
+
               firstName:
                 item.employee.firstName,
+
               lastName:
                 item.employee.lastName,
+
               role:
                 item.employee.role,
+
               active:
                 item.employee.active,
             })
@@ -669,9 +817,10 @@ export async function DELETE(
     const session =
       auth.session;
 
-    const url = new URL(
-      request.url
-    );
+    const url =
+      new URL(
+        request.url
+      );
 
     const assignmentId =
       Number(
@@ -689,7 +838,8 @@ export async function DELETE(
       !Number.isInteger(
         assignmentId
       ) ||
-      assignmentId <= 0
+      assignmentId <=
+        0
     ) {
       return NextResponse.json(
         {
@@ -707,11 +857,14 @@ export async function DELETE(
         where: {
           id:
             assignmentId,
+
           companyId:
             session.companyId,
         },
+
         include: {
-          employees: true,
+          employees:
+            true,
         },
       });
 
@@ -727,7 +880,9 @@ export async function DELETE(
       );
     }
 
-    if (!employeeIdValue) {
+    if (
+      !employeeIdValue
+    ) {
       await prisma.scheduleAssignment.delete({
         where: {
           id:
@@ -736,7 +891,8 @@ export async function DELETE(
       });
 
       return NextResponse.json({
-        success: true,
+        success:
+          true,
       });
     }
 
@@ -749,7 +905,8 @@ export async function DELETE(
       !Number.isInteger(
         employeeId
       ) ||
-      employeeId <= 0
+      employeeId <=
+        0
     ) {
       return NextResponse.json(
         {
@@ -777,7 +934,8 @@ export async function DELETE(
       });
 
     if (
-      remainingCount === 0
+      remainingCount ===
+      0
     ) {
       await prisma.scheduleAssignment.delete({
         where: {
@@ -788,7 +946,8 @@ export async function DELETE(
     }
 
     return NextResponse.json({
-      success: true,
+      success:
+        true,
     });
   } catch (error) {
     console.error(

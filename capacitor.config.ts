@@ -8,6 +8,7 @@ const config: CapacitorConfig = {
 
   server: {
     url: "https://www.jobclokr.com",
+    cleartext: false,
   },
 };
 

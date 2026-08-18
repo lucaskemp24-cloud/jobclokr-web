@@ -11,6 +11,7 @@ type InvoiceStatusRequestBody = {
   startDate?: string;
   endDate?: string;
   invoiced?: boolean;
+  companyId?: number;
 };
 
 function parseDateOnly(
@@ -30,6 +31,32 @@ function parseDateOnly(
   }
 
   return date;
+}
+
+function getCompanyId(
+  sessionCompanyId: number | null,
+  requestedCompanyId?: number
+) {
+  if (
+    sessionCompanyId !==
+    null
+  ) {
+    return sessionCompanyId;
+  }
+
+  if (
+    requestedCompanyId !==
+      undefined &&
+    Number.isInteger(
+      requestedCompanyId
+    ) &&
+    requestedCompanyId >
+      0
+  ) {
+    return requestedCompanyId;
+  }
+
+  return null;
 }
 
 export async function GET(
@@ -71,6 +98,36 @@ export async function GET(
         "endDate"
       );
 
+    const companyIdValue =
+      url.searchParams.get(
+        "companyId"
+      );
+
+    const requestedCompanyId =
+      companyIdValue
+        ? Number(
+            companyIdValue
+          )
+        : undefined;
+
+    const companyId =
+      getCompanyId(
+        session.companyId,
+        requestedCompanyId
+      );
+
+    if (!companyId) {
+      return NextResponse.json(
+        {
+          error:
+            "A company is required.",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
     if (
       !startDateValue ||
       !endDateValue
@@ -111,14 +168,26 @@ export async function GET(
       );
     }
 
+    if (
+      endDate <
+      startDate
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "End date cannot be before start date.",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
     const statuses =
       await prisma.projectInvoiceStatus.findMany({
         where: {
-          companyId:
-            session.companyId,
-
+          companyId,
           startDate,
-
           endDate,
         },
 
@@ -140,13 +209,16 @@ export async function GET(
         },
 
         orderBy: {
-          projectId: "asc",
+          projectId:
+            "asc",
         },
       });
 
     return NextResponse.json(
       statuses.map(
-        (status) => ({
+        (
+          status
+        ) => ({
           id:
             status.id,
 
@@ -223,6 +295,34 @@ export async function PUT(
       (await request.json()) as
         InvoiceStatusRequestBody;
 
+    const requestedCompanyId =
+      body.companyId ===
+        undefined ||
+      body.companyId ===
+        null
+        ? undefined
+        : Number(
+            body.companyId
+          );
+
+    const companyId =
+      getCompanyId(
+        session.companyId,
+        requestedCompanyId
+      );
+
+    if (!companyId) {
+      return NextResponse.json(
+        {
+          error:
+            "A company is required.",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
     const projectId =
       Number(
         body.projectId
@@ -232,7 +332,8 @@ export async function PUT(
       !Number.isInteger(
         projectId
       ) ||
-      projectId <= 0
+      projectId <=
+        0
     ) {
       return NextResponse.json(
         {
@@ -323,8 +424,7 @@ export async function PUT(
           id:
             projectId,
 
-          companyId:
-            session.companyId,
+          companyId,
         },
 
         select: {
@@ -344,13 +444,18 @@ export async function PUT(
       );
     }
 
+    const markedByEmployeeId =
+      session.accountType ===
+        "COMPANY_USER"
+        ? session.employeeId
+        : null;
+
     const status =
       await prisma.projectInvoiceStatus.upsert({
         where: {
           companyId_projectId_startDate_endDate:
             {
-              companyId:
-                session.companyId,
+              companyId,
 
               projectId,
 
@@ -361,8 +466,7 @@ export async function PUT(
         },
 
         create: {
-          companyId:
-            session.companyId,
+          companyId,
 
           projectId,
 
@@ -380,7 +484,7 @@ export async function PUT(
 
           markedByEmployeeId:
             body.invoiced
-              ? session.employeeId
+              ? markedByEmployeeId
               : null,
         },
 
@@ -395,7 +499,7 @@ export async function PUT(
 
           markedByEmployeeId:
             body.invoiced
-              ? session.employeeId
+              ? markedByEmployeeId
               : null,
         },
 
@@ -444,7 +548,11 @@ export async function PUT(
       markedByName:
         status.markedByEmployee
           ? `${status.markedByEmployee.firstName} ${status.markedByEmployee.lastName}`.trim()
-          : null,
+          : session.accountType ===
+              "PLATFORM_ADMIN" &&
+            status.invoiced
+            ? session.name
+            : null,
     });
   } catch (error) {
     console.error(

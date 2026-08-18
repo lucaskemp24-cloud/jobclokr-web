@@ -5,7 +5,11 @@ import {
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
-import { getSession } from "@/lib/session";
+import {
+  getSession,
+  isCompanySession,
+  isPlatformAdminSession,
+} from "@/lib/session";
 
 export async function POST(
   request: Request
@@ -80,6 +84,112 @@ export async function POST(
       );
     }
 
+    /*
+      ========================================
+      PLATFORM ADMIN PASSWORD CHANGE
+      ========================================
+    */
+
+    if (
+      isPlatformAdminSession(
+        session
+      )
+    ) {
+      const admin =
+        await prisma.platformAdmin.findUnique({
+          where: {
+            id:
+              session.adminId,
+          },
+
+          select: {
+            id: true,
+            active: true,
+            passwordHash: true,
+          },
+        });
+
+      if (
+        !admin ||
+        !admin.active
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Unable to update password.",
+          },
+          {
+            status: 404,
+          }
+        );
+      }
+
+      const passwordMatches =
+        await compare(
+          currentPassword,
+          admin.passwordHash
+        );
+
+      if (!passwordMatches) {
+        return NextResponse.json(
+          {
+            error:
+              "Current password is incorrect.",
+          },
+          {
+            status: 401,
+          }
+        );
+      }
+
+      const newPasswordHash =
+        await hash(
+          newPassword,
+          12
+        );
+
+      await prisma.platformAdmin.update({
+        where: {
+          id:
+            admin.id,
+        },
+
+        data: {
+          passwordHash:
+            newPasswordHash,
+
+          mustChangePassword:
+            false,
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+      });
+    }
+
+    /*
+      ========================================
+      COMPANY USER PASSWORD CHANGE
+      ========================================
+    */
+
+    if (
+      !isCompanySession(
+        session
+      )
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Unable to update password.",
+        },
+        {
+          status: 403,
+        }
+      );
+    }
+
     const employee =
       await prisma.employee.findFirst({
         where: {
@@ -89,7 +199,8 @@ export async function POST(
           companyId:
             session.companyId,
 
-          active: true,
+          active:
+            true,
         },
 
         select: {

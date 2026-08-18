@@ -36,6 +36,30 @@ function serializeMaterial(material: {
   };
 }
 
+function isCompanySession(
+  session: Awaited<
+    ReturnType<typeof getSession>
+  >
+): session is NonNullable<
+  Awaited<ReturnType<typeof getSession>>
+> & {
+  employeeId: number;
+  companyId: number;
+  role:
+    | "Owner"
+    | "Office"
+    | "Employee";
+} {
+  return (
+    session !== null &&
+    session.role !== "PlatformAdmin" &&
+    typeof session.employeeId ===
+      "number" &&
+    typeof session.companyId ===
+      "number"
+  );
+}
+
 export async function GET(
   request: Request
 ) {
@@ -68,54 +92,29 @@ export async function GET(
         "employeeId"
       );
 
-    const where: {
-      projectId?: number;
-      employeeId?: number;
-      project?: {
-        companyId: number;
-      };
-      OR?: Array<
-        | {
-            project: {
-              assignments: {
-                some: {
-                  employeeId: number;
-                };
-              };
-            };
-          }
-        | {
-            project: {
-              scheduleAssignments: {
-                some: {
-                  employees: {
-                    some: {
-                      employeeId: number;
-                    };
-                  };
-                };
-              };
-            };
-          }
-      >;
-    } = {
-      project: {
-        companyId:
-          session.companyId,
-      },
-    };
+    const companyIdValue =
+      url.searchParams.get(
+        "companyId"
+      );
+
+    let projectId:
+      number | undefined;
+
+    let employeeId:
+      number | undefined;
+
+    let requestedCompanyId:
+      number | undefined;
 
     if (projectIdValue) {
-      const projectId =
-        Number(
-          projectIdValue
-        );
+      const parsedProjectId =
+        Number(projectIdValue);
 
       if (
         !Number.isInteger(
-          projectId
+          parsedProjectId
         ) ||
-        projectId <= 0
+        parsedProjectId <= 0
       ) {
         return NextResponse.json(
           {
@@ -128,95 +127,19 @@ export async function GET(
         );
       }
 
-      where.projectId =
-        projectId;
+      projectId =
+        parsedProjectId;
     }
 
-    if (
-      session.role ===
-      "Employee"
-    ) {
-      if (employeeIdValue) {
-        const requestedEmployeeId =
-          Number(
-            employeeIdValue
-          );
-
-        if (
-          !Number.isInteger(
-            requestedEmployeeId
-          ) ||
-          requestedEmployeeId <= 0
-        ) {
-          return NextResponse.json(
-            {
-              error:
-                "Invalid employee.",
-            },
-            {
-              status: 400,
-            }
-          );
-        }
-
-        if (
-          requestedEmployeeId !==
-          session.employeeId
-        ) {
-          return NextResponse.json(
-            {
-              error:
-                "You cannot access another employee's materials.",
-            },
-            {
-              status: 403,
-            }
-          );
-        }
-
-        where.employeeId =
-          session.employeeId;
-      }
-
-      where.OR = [
-        {
-          project: {
-            assignments: {
-              some: {
-                employeeId:
-                  session.employeeId,
-              },
-            },
-          },
-        },
-        {
-          project: {
-            scheduleAssignments: {
-              some: {
-                employees: {
-                  some: {
-                    employeeId:
-                      session.employeeId,
-                  },
-                },
-              },
-            },
-          },
-        },
-      ];
-    } else if (
-      employeeIdValue
-    ) {
-      const employeeId =
-        Number(
-          employeeIdValue
-        );
+    if (employeeIdValue) {
+      const parsedEmployeeId =
+        Number(employeeIdValue);
 
       if (
         !Number.isInteger(
-          employeeId
+          parsedEmployeeId
         ) ||
-        employeeId <= 0
+        parsedEmployeeId <= 0
       ) {
         return NextResponse.json(
           {
@@ -229,13 +152,194 @@ export async function GET(
         );
       }
 
-      where.employeeId =
-        employeeId;
+      employeeId =
+        parsedEmployeeId;
+    }
+
+    if (companyIdValue) {
+      const parsedCompanyId =
+        Number(companyIdValue);
+
+      if (
+        !Number.isInteger(
+          parsedCompanyId
+        ) ||
+        parsedCompanyId <= 0
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Invalid company.",
+          },
+          {
+            status: 400,
+          }
+        );
+      }
+
+      requestedCompanyId =
+        parsedCompanyId;
+    }
+
+    /*
+      PLATFORM ADMIN
+
+      Gio is not an employee and is not
+      assigned to a company.
+
+      Platform admins may inspect materials
+      across companies. A companyId can
+      optionally be supplied to narrow the
+      results.
+    */
+    if (
+      session.role ===
+      "PlatformAdmin"
+    ) {
+      const materials =
+        await prisma.jobMaterial.findMany({
+          where: {
+            ...(projectId
+              ? {
+                  projectId,
+                }
+              : {}),
+
+            ...(employeeId
+              ? {
+                  employeeId,
+                }
+              : {}),
+
+            ...(requestedCompanyId
+              ? {
+                  project: {
+                    companyId:
+                      requestedCompanyId,
+                  },
+                }
+              : {}),
+          },
+
+          include: {
+            employee: true,
+            project: true,
+          },
+
+          orderBy: {
+            createdAt: "desc",
+          },
+        });
+
+      return NextResponse.json(
+        materials.map(
+          serializeMaterial
+        )
+      );
+    }
+
+    /*
+      Everything below this point must be
+      a company employee session.
+    */
+    if (!isCompanySession(session)) {
+      return NextResponse.json(
+        {
+          error:
+            "Invalid company session.",
+        },
+        {
+          status: 403,
+        }
+      );
+    }
+
+    if (
+      session.role ===
+        "Employee" &&
+      employeeId !== undefined &&
+      employeeId !==
+        session.employeeId
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "You cannot access another employee's materials.",
+        },
+        {
+          status: 403,
+        }
+      );
     }
 
     const materials =
       await prisma.jobMaterial.findMany({
-        where,
+        where: {
+          ...(projectId
+            ? {
+                projectId,
+              }
+            : {}),
+
+          ...(session.role ===
+          "Employee"
+            ? {
+                ...(employeeId !==
+                undefined
+                  ? {
+                      employeeId:
+                        session.employeeId,
+                    }
+                  : {}),
+
+                OR: [
+                  {
+                    project: {
+                      companyId:
+                        session.companyId,
+
+                      assignments: {
+                        some: {
+                          employeeId:
+                            session.employeeId,
+                        },
+                      },
+                    },
+                  },
+                  {
+                    project: {
+                      companyId:
+                        session.companyId,
+
+                      scheduleAssignments:
+                        {
+                          some: {
+                            employees: {
+                              some: {
+                                employeeId:
+                                  session.employeeId,
+                              },
+                            },
+                          },
+                        },
+                    },
+                  },
+                ],
+              }
+            : {
+                ...(employeeId !==
+                undefined
+                  ? {
+                      employeeId,
+                    }
+                  : {}),
+
+                project: {
+                  companyId:
+                    session.companyId,
+                },
+              }),
+        },
 
         include: {
           employee: true,
@@ -289,18 +393,48 @@ export async function POST(
       );
     }
 
+    /*
+      Platform admins are not employees.
+
+      Materials must always belong to an
+      actual employee, so Gio should not
+      create a material entry as himself.
+    */
+    if (
+      session.role ===
+      "PlatformAdmin"
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Platform administrators cannot create job materials as an employee.",
+        },
+        {
+          status: 403,
+        }
+      );
+    }
+
+    if (!isCompanySession(session)) {
+      return NextResponse.json(
+        {
+          error:
+            "Invalid company session.",
+        },
+        {
+          status: 403,
+        }
+      );
+    }
+
     const body =
       await request.json();
 
     const projectId =
-      Number(
-        body.projectId
-      );
+      Number(body.projectId);
 
     const requestedEmployeeId =
-      Number(
-        body.employeeId
-      );
+      Number(body.employeeId);
 
     const materialName =
       String(
@@ -308,9 +442,7 @@ export async function POST(
       ).trim();
 
     const quantity =
-      Number(
-        body.quantity
-      );
+      Number(body.quantity);
 
     const unit =
       String(
@@ -380,8 +512,7 @@ export async function POST(
       );
     }
 
-    let employeeId:
-      number;
+    let employeeId: number;
 
     if (
       session.role ===
@@ -391,8 +522,7 @@ export async function POST(
         Number.isInteger(
           requestedEmployeeId
         ) &&
-        requestedEmployeeId >
-          0 &&
+        requestedEmployeeId > 0 &&
         requestedEmployeeId !==
           session.employeeId
       ) {
@@ -491,19 +621,21 @@ export async function POST(
       );
 
     const scheduledEmployee =
-      await prisma.scheduleAssignmentEmployee.findFirst({
-        where: {
-          employeeId,
+      await prisma
+        .scheduleAssignmentEmployee
+        .findFirst({
+          where: {
+            employeeId,
 
-          assignment: {
-            projectId,
-            companyId:
-              session.companyId,
-            date:
-              scheduleDate,
+            assignment: {
+              projectId,
+              companyId:
+                session.companyId,
+              date:
+                scheduleDate,
+            },
           },
-        },
-      });
+        });
 
     const projectAssignment =
       await prisma.employeeProject.findFirst({
@@ -595,9 +727,7 @@ export async function DELETE(
     }
 
     const url =
-      new URL(
-        request.url
-      );
+      new URL(request.url);
 
     const id =
       Number(
@@ -626,17 +756,70 @@ export async function DELETE(
       );
     }
 
+    /*
+      Platform admin can delete a material
+      globally because the material itself
+      belongs to an actual employee/project,
+      not to the admin.
+    */
+    if (
+      session.role ===
+      "PlatformAdmin"
+    ) {
+      const material =
+        await prisma.jobMaterial.findUnique({
+          where: {
+            id,
+          },
+
+          select: {
+            id: true,
+          },
+        });
+
+      if (!material) {
+        return NextResponse.json(
+          {
+            error:
+              "Material entry not found.",
+          },
+          {
+            status: 404,
+          }
+        );
+      }
+
+      await prisma.jobMaterial.delete({
+        where: {
+          id,
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+      });
+    }
+
+    if (!isCompanySession(session)) {
+      return NextResponse.json(
+        {
+          error:
+            "Invalid company session.",
+        },
+        {
+          status: 403,
+        }
+      );
+    }
+
     let employeeId:
-      number | null =
-        null;
+      number | undefined;
 
     if (
       session.role ===
       "Employee"
     ) {
-      if (
-        employeeIdValue
-      ) {
+      if (employeeIdValue) {
         const requestedEmployeeId =
           Number(
             employeeIdValue
@@ -711,7 +894,8 @@ export async function DELETE(
         where: {
           id,
 
-          ...(employeeId
+          ...(employeeId !==
+          undefined
             ? {
                 employeeId,
               }

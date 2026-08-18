@@ -136,27 +136,6 @@ function calculateHours(
   );
 }
 
-function getTimekeepingErrorMessage(
-  error: unknown,
-  action: "clock in" | "clock out"
-) {
-  if (
-    typeof navigator !== "undefined" &&
-    (
-      !navigator.onLine ||
-      error instanceof TypeError
-    )
-  ) {
-    return `No internet connection. Your ${action} was not saved. Reconnect and try again.`;
-  }
-
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return `Unable to ${action}. Please try again.`;
-}
-
 function getPriorityLabel(
   priority: SchedulePriority
 ) {
@@ -663,16 +642,10 @@ export default function EmployeePortalPage() {
         "success"
       );
     } catch (error) {
-      console.error(
-        "Clock in failed:",
-        error
-      );
-
       showToast(
-        getTimekeepingErrorMessage(
-          error,
-          "clock in"
-        ),
+        error instanceof Error
+          ? error.message
+          : "Unable to clock in.",
         "error"
       );
     }
@@ -736,16 +709,10 @@ export default function EmployeePortalPage() {
         "success"
       );
     } catch (error) {
-      console.error(
-        "Clock out failed:",
-        error
-      );
-
       showToast(
-        getTimekeepingErrorMessage(
-          error,
-          "clock out"
-        ),
+        error instanceof Error
+          ? error.message
+          : "Unable to clock out.",
         "error"
       );
     }
@@ -922,10 +889,7 @@ export default function EmployeePortalPage() {
           </section>
         )}
 
-        <section
-          id="assignment-section"
-          className="scroll-mt-24"
-        >
+        <section>
           <div className="mb-4 flex items-end justify-between">
             <div>
               <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
@@ -1219,10 +1183,7 @@ export default function EmployeePortalPage() {
           )}
         </section>
 
-        <section
-          id="hours-section"
-          className="mt-5 scroll-mt-24 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900"
-        >
+        <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div className="flex items-end justify-between">
             <div>
               <p className="text-sm font-semibold text-slate-500">

@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
-import { getSession } from "@/lib/session";
+import {
+  getSession,
+  isCompanySession,
+} from "@/lib/session";
 
 function serializeTimeEntry(entry: {
   id: number;
@@ -37,14 +40,13 @@ function serializeTimeEntry(entry: {
 }
 
 function isOfficeUser(
-  role: "Owner" | "Office" | "Employee"
+  role: string
 ) {
   return (
     role === "Owner" ||
     role === "Office"
   );
 }
-
 
 function parseDateTime(
   value: unknown
@@ -89,6 +91,25 @@ export async function GET(
       );
     }
 
+    if (
+      !isCompanySession(
+        session
+      )
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Company access required.",
+        },
+        {
+          status: 403,
+        }
+      );
+    }
+
+    const companyId =
+      session.companyId;
+
     const url =
       new URL(request.url);
 
@@ -116,8 +137,7 @@ export async function GET(
       };
     } = {
       project: {
-        companyId:
-          session.companyId,
+        companyId,
       },
     };
 
@@ -283,6 +303,25 @@ export async function POST(
       );
     }
 
+    if (
+      !isCompanySession(
+        session
+      )
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Company access required.",
+        },
+        {
+          status: 403,
+        }
+      );
+    }
+
+    const companyId =
+      session.companyId;
+
     const body =
       await request.json();
 
@@ -324,8 +363,7 @@ export async function POST(
         Number.isInteger(
           requestedEmployeeId
         ) &&
-        requestedEmployeeId >
-          0 &&
+        requestedEmployeeId > 0 &&
         requestedEmployeeId !==
           session.employeeId
       ) {
@@ -372,8 +410,7 @@ export async function POST(
         prisma.employee.findFirst({
           where: {
             id: employeeId,
-            companyId:
-              session.companyId,
+            companyId,
             active: true,
           },
         }),
@@ -381,8 +418,7 @@ export async function POST(
         prisma.project.findFirst({
           where: {
             id: projectId,
-            companyId:
-              session.companyId,
+            companyId,
           },
         }),
       ]);
@@ -418,8 +454,7 @@ export async function POST(
           clockOut: null,
 
           project: {
-            companyId:
-              session.companyId,
+            companyId,
           },
         },
 
@@ -451,6 +486,7 @@ export async function POST(
         data: {
           employeeId,
           projectId,
+
           clockIn:
             new Date(),
 
@@ -494,7 +530,10 @@ export async function POST(
   }
 }
 
-export async function PATCH(
+/*
+  STOP PART 1 HERE.
+  PART 2 STARTS WITH PATCH.
+*/export async function PATCH(
   request: Request
 ) {
   try {
@@ -513,11 +552,32 @@ export async function PATCH(
       );
     }
 
+    if (
+      !isCompanySession(
+        session
+      )
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Company access required.",
+        },
+        {
+          status: 403,
+        }
+      );
+    }
+
+    const companyId =
+      session.companyId;
+
     const body =
       await request.json();
 
     const id =
-      Number(body.id);
+      Number(
+        body.id
+      );
 
     const requestedEmployeeId =
       Number(
@@ -525,7 +585,9 @@ export async function PATCH(
       );
 
     if (
-      !Number.isInteger(id) ||
+      !Number.isInteger(
+        id
+      ) ||
       id <= 0
     ) {
       return NextResponse.json(
@@ -573,7 +635,8 @@ export async function PATCH(
         !Number.isInteger(
           requestedEmployeeId
         ) ||
-        requestedEmployeeId <= 0
+        requestedEmployeeId <=
+          0
       ) {
         return NextResponse.json(
           {
@@ -598,8 +661,7 @@ export async function PATCH(
           clockOut: null,
 
           project: {
-            companyId:
-              session.companyId,
+            companyId,
           },
         },
       });
@@ -676,6 +738,22 @@ export async function PUT(
     }
 
     if (
+      !isCompanySession(
+        session
+      )
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Company access required.",
+        },
+        {
+          status: 403,
+        }
+      );
+    }
+
+    if (
       !isOfficeUser(
         session.role
       )
@@ -691,6 +769,9 @@ export async function PUT(
       );
     }
 
+    const companyId =
+      session.companyId;
+
     const body =
       await request.json();
 
@@ -698,11 +779,16 @@ export async function PUT(
       body.id;
 
     const id =
-      rawId === undefined ||
-      rawId === null ||
-      rawId === ""
+      rawId ===
+        undefined ||
+      rawId ===
+        null ||
+      rawId ===
+        ""
         ? null
-        : Number(rawId);
+        : Number(
+            rawId
+          );
 
     const employeeId =
       Number(
@@ -720,8 +806,10 @@ export async function PUT(
       );
 
     const hasClockOut =
-      body.clockOut !== undefined &&
-      body.clockOut !== null &&
+      body.clockOut !==
+        undefined &&
+      body.clockOut !==
+        null &&
       String(
         body.clockOut
       ).trim() !== "";
@@ -734,14 +822,17 @@ export async function PUT(
         : null;
 
     const notes =
-      typeof body.notes === "string"
+      typeof body.notes ===
+      "string"
         ? body.notes.trim()
         : "";
 
     if (
       id !== null &&
       (
-        !Number.isInteger(id) ||
+        !Number.isInteger(
+          id
+        ) ||
         id <= 0
       )
     ) {
@@ -840,17 +931,22 @@ export async function PUT(
       await Promise.all([
         prisma.employee.findFirst({
           where: {
-            id: employeeId,
-            companyId:
-              session.companyId,
+            id:
+              employeeId,
+
+            companyId,
+
+            active:
+              true,
           },
         }),
 
         prisma.project.findFirst({
           where: {
-            id: projectId,
-            companyId:
-              session.companyId,
+            id:
+              projectId,
+
+            companyId,
           },
         }),
       ]);
@@ -879,15 +975,22 @@ export async function PUT(
       );
     }
 
-    if (id !== null) {
+    if (
+      id !== null
+    ) {
       const existingEntry =
         await prisma.timeEntry.findFirst({
           where: {
             id,
+
             project: {
-              companyId:
-                session.companyId,
+              companyId,
             },
+          },
+
+          select: {
+            id:
+              true,
           },
         });
 
@@ -909,24 +1012,28 @@ export async function PUT(
         await prisma.timeEntry.findFirst({
           where: {
             employeeId,
-            clockOut: null,
 
-            ...(id !== null
+            clockOut:
+              null,
+
+            ...(id !==
+            null
               ? {
                   id: {
-                    not: id,
+                    not:
+                      id,
                   },
                 }
               : {}),
 
             project: {
-              companyId:
-                session.companyId,
+              companyId,
             },
           },
 
           include: {
-            project: true,
+            project:
+              true,
           },
         });
 
@@ -951,15 +1058,21 @@ export async function PUT(
               projectId,
               clockIn,
               clockOut,
+
               notes:
-                notes || null,
+                notes ||
+                null,
+
               manuallyAdjusted:
                 true,
             },
 
             include: {
-              employee: true,
-              project: true,
+              employee:
+                true,
+
+              project:
+                true,
             },
           })
         : await prisma.timeEntry.update({
@@ -972,15 +1085,21 @@ export async function PUT(
               projectId,
               clockIn,
               clockOut,
+
               notes:
-                notes || null,
+                notes ||
+                null,
+
               manuallyAdjusted:
                 true,
             },
 
             include: {
-              employee: true,
-              project: true,
+              employee:
+                true,
+
+              project:
+                true,
             },
           });
 
@@ -1033,6 +1152,22 @@ export async function DELETE(
     }
 
     if (
+      !isCompanySession(
+        session
+      )
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Company access required.",
+        },
+        {
+          status: 403,
+        }
+      );
+    }
+
+    if (
       !isOfficeUser(
         session.role
       )
@@ -1047,6 +1182,9 @@ export async function DELETE(
         }
       );
     }
+
+    const companyId =
+      session.companyId;
 
     const url =
       new URL(
@@ -1081,14 +1219,15 @@ export async function DELETE(
       await prisma.timeEntry.findFirst({
         where: {
           id,
+
           project: {
-            companyId:
-              session.companyId,
+            companyId,
           },
         },
 
         select: {
-          id: true,
+          id:
+            true,
         },
       });
 
@@ -1111,7 +1250,8 @@ export async function DELETE(
     });
 
     return NextResponse.json({
-      success: true,
+      success:
+        true,
     });
   } catch (error) {
     console.error(

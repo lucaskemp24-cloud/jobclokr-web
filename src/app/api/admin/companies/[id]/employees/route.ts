@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
   getSession,
-  isCompanySession,
+  isPlatformAdminSession,
 } from "@/lib/session";
 
 type RouteContext = {
@@ -12,6 +12,24 @@ type RouteContext = {
     id: string;
   }>;
 };
+
+const VALID_ROLES = [
+  "OWNER",
+  "OFFICE",
+  "FOREMAN",
+  "EMPLOYEE",
+] as const;
+
+type EmployeeRole =
+  (typeof VALID_ROLES)[number];
+
+function isEmployeeRole(
+  value: string
+): value is EmployeeRole {
+  return VALID_ROLES.includes(
+    value as EmployeeRole
+  );
+}
 
 const employeeSelect = {
   id: true,
@@ -36,27 +54,16 @@ export async function GET(
     const session =
       await getSession();
 
-    if (!session) {
-      return NextResponse.json(
-        {
-          error:
-            "Authentication required.",
-        },
-        {
-          status: 401,
-        }
-      );
-    }
-
     if (
-      !isCompanySession(
+      !session ||
+      !isPlatformAdminSession(
         session
       )
     ) {
       return NextResponse.json(
         {
           error:
-            "Company access required.",
+            "Platform administrator access required.",
         },
         {
           status: 403,
@@ -67,19 +74,19 @@ export async function GET(
     const { id } =
       await context.params;
 
-    const employeeId =
+    const companyId =
       Number(id);
 
     if (
       !Number.isInteger(
-        employeeId
+        companyId
       ) ||
-      employeeId <= 0
+      companyId <= 0
     ) {
       return NextResponse.json(
         {
           error:
-            "Invalid employee ID.",
+            "Invalid company ID.",
         },
         {
           status: 400,
@@ -87,42 +94,24 @@ export async function GET(
       );
     }
 
-    if (
-      session.role ===
-        "Employee" &&
-      employeeId !==
-        session.employeeId
-    ) {
-      return NextResponse.json(
-        {
-          error:
-            "You cannot access another employee.",
-        },
-        {
-          status: 403,
-        }
-      );
-    }
-
-    const employee =
-      await prisma.employee.findFirst({
+    const company =
+      await prisma.company.findUnique({
         where: {
           id:
-            employeeId,
-
-          companyId:
-            session.companyId,
+            companyId,
         },
 
-        select:
-          employeeSelect,
+        select: {
+          id:
+            true,
+        },
       });
 
-    if (!employee) {
+    if (!company) {
       return NextResponse.json(
         {
           error:
-            "Employee not found.",
+            "Company not found.",
         },
         {
           status: 404,
@@ -130,19 +119,40 @@ export async function GET(
       );
     }
 
+    const employees =
+      await prisma.employee.findMany({
+        where: {
+          companyId,
+        },
+
+        select:
+          employeeSelect,
+
+        orderBy: [
+          {
+            lastName:
+              "asc",
+          },
+          {
+            firstName:
+              "asc",
+          },
+        ],
+      });
+
     return NextResponse.json(
-      employee
+      employees
     );
   } catch (error) {
     console.error(
-      "Failed to load employee:",
+      "Failed to load admin company employees:",
       error
     );
 
     return NextResponse.json(
       {
         error:
-          "Unable to load employee.",
+          "Unable to load employees.",
       },
       {
         status: 500,
@@ -151,7 +161,7 @@ export async function GET(
   }
 }
 
-export async function PATCH(
+export async function POST(
   request: Request,
   context: RouteContext
 ) {
@@ -159,44 +169,16 @@ export async function PATCH(
     const session =
       await getSession();
 
-    if (!session) {
-      return NextResponse.json(
-        {
-          error:
-            "Authentication required.",
-        },
-        {
-          status: 401,
-        }
-      );
-    }
-
     if (
-      !isCompanySession(
+      !session ||
+      !isPlatformAdminSession(
         session
       )
     ) {
       return NextResponse.json(
         {
           error:
-            "Company access required.",
-        },
-        {
-          status: 403,
-        }
-      );
-    }
-
-    if (
-      session.role !==
-        "Owner" &&
-      session.role !==
-        "Office"
-    ) {
-      return NextResponse.json(
-        {
-          error:
-            "Office access required.",
+            "Platform administrator access required.",
         },
         {
           status: 403,
@@ -207,19 +189,19 @@ export async function PATCH(
     const { id } =
       await context.params;
 
-    const employeeId =
+    const companyId =
       Number(id);
 
     if (
       !Number.isInteger(
-        employeeId
+        companyId
       ) ||
-      employeeId <= 0
+      companyId <= 0
     ) {
       return NextResponse.json(
         {
           error:
-            "Invalid employee ID.",
+            "Invalid company ID.",
         },
         {
           status: 400,
@@ -227,8 +209,59 @@ export async function PATCH(
       );
     }
 
+    const company =
+      await prisma.company.findUnique({
+        where: {
+          id:
+            companyId,
+        },
+
+        select: {
+          id:
+            true,
+
+          name:
+            true,
+
+          code:
+            true,
+        },
+      });
+
+    if (!company) {
+      return NextResponse.json(
+        {
+          error:
+            "Company not found.",
+        },
+        {
+          status: 404,
+        }
+      );
+    }
+
     const body =
       await request.json();
+
+    const firstName =
+      String(
+        body.firstName ?? ""
+      ).trim();
+
+    const lastName =
+      String(
+        body.lastName ?? ""
+      ).trim();
+
+    const email =
+      String(
+        body.email ?? ""
+      ).trim();
+
+    const phone =
+      String(
+        body.phone ?? ""
+      ).trim();
 
     const loginName =
       String(
@@ -241,6 +274,32 @@ export async function PATCH(
       String(
         body.password ?? ""
       );
+
+    const role =
+      String(
+        body.role ??
+          "EMPLOYEE"
+      )
+        .trim()
+        .toUpperCase();
+
+    const active =
+      body.active !== false;
+
+    if (
+      !firstName ||
+      !lastName
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "First and last name are required.",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
 
     if (!loginName) {
       return NextResponse.json(
@@ -282,59 +341,43 @@ export async function PATCH(
       );
     }
 
-    const employee =
-      await prisma.employee.findFirst({
-        where: {
-          id:
-            employeeId,
-
-          companyId:
-            session.companyId,
-        },
-
-        select: {
-          id: true,
-        },
-      });
-
-    if (!employee) {
-      return NextResponse.json(
-        {
-          error:
-            "Employee not found.",
-        },
-        {
-          status: 404,
-        }
-      );
-    }
-
-    const existingLogin =
-      await prisma.employee.findFirst({
-        where: {
-          companyId:
-            session.companyId,
-
-          loginName,
-
-          NOT: {
-            id:
-              employeeId,
-          },
-        },
-
-        select: {
-          id: true,
-        },
-      });
-
     if (
-      existingLogin
+      !isEmployeeRole(
+        role
+      )
     ) {
       return NextResponse.json(
         {
           error:
-            "That login name is already being used.",
+            "Invalid employee role.",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
+    const existingEmployee =
+      await prisma.employee.findFirst({
+        where: {
+          companyId,
+
+          loginName,
+        },
+
+        select: {
+          id:
+            true,
+        },
+      });
+
+    if (
+      existingEmployee
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "That login name is already being used by this company.",
         },
         {
           status: 409,
@@ -348,38 +391,69 @@ export async function PATCH(
         12
       );
 
-    const updatedEmployee =
-      await prisma.employee.update({
-        where: {
-          id:
-            employeeId,
-        },
-
+    const employee =
+      await prisma.employee.create({
         data: {
+          companyId,
+
+          firstName,
+          lastName,
+
+          email:
+            email || null,
+
+          phone:
+            phone || null,
+
           loginName,
           passwordHash,
 
           mustChangePassword:
             true,
+
+          role,
+          active,
         },
 
         select:
           employeeSelect,
       });
 
+    console.log(
+      "[PLATFORM ADMIN] Employee created for company.",
+      {
+        adminId:
+          session.adminId,
+
+        companyId,
+
+        companyName:
+          company.name,
+
+        employeeId:
+          employee.id,
+
+        role:
+          employee.role,
+      }
+    );
+
     return NextResponse.json(
-      updatedEmployee
+      employee,
+      {
+        status: 201,
+      }
     );
   } catch (error) {
     console.error(
-      "Failed to update employee login:",
+      "Failed to create admin company employee:",
       error
     );
 
     return NextResponse.json(
       {
         error:
-          "Unable to update employee login.",
+          "Unable to create employee.",
       },
       {
         status: 500,

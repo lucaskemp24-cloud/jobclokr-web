@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
-import { getSession } from "@/lib/session";
+import {
+  getSession,
+  isCompanySession,
+} from "@/lib/session";
 
-const MAX_IMAGE_DATA_LENGTH = 6_000_000;
+const MAX_IMAGE_DATA_LENGTH =
+  6_000_000;
 
 function serializePhoto(photo: {
   id: number;
@@ -13,25 +17,44 @@ function serializePhoto(photo: {
   fileName: string | null;
   note: string | null;
   createdAt: Date;
+
   employee: {
     firstName: string;
     lastName: string;
   };
+
   project: {
     name: string;
   };
 }) {
   return {
-    id: photo.id,
-    projectId: photo.projectId,
-    projectName: photo.project.name,
-    employeeId: photo.employeeId,
+    id:
+      photo.id,
+
+    projectId:
+      photo.projectId,
+
+    projectName:
+      photo.project.name,
+
+    employeeId:
+      photo.employeeId,
+
     employeeName:
       `${photo.employee.firstName} ${photo.employee.lastName}`.trim(),
-    imageData: photo.imageUrl,
-    imageUrl: photo.imageUrl,
-    fileName: photo.fileName ?? "",
-    note: photo.note ?? "",
+
+    imageData:
+      photo.imageUrl,
+
+    imageUrl:
+      photo.imageUrl,
+
+    fileName:
+      photo.fileName ?? "",
+
+    note:
+      photo.note ?? "",
+
     createdAt:
       photo.createdAt.toISOString(),
   };
@@ -56,8 +79,33 @@ export async function GET(
       );
     }
 
+    if (
+      !isCompanySession(
+        session
+      )
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Company access required.",
+        },
+        {
+          status: 403,
+        }
+      );
+    }
+
+    const {
+      companyId,
+      employeeId:
+        sessionEmployeeId,
+      role,
+    } = session;
+
     const url =
-      new URL(request.url);
+      new URL(
+        request.url
+      );
 
     const projectIdValue =
       url.searchParams.get(
@@ -71,10 +119,13 @@ export async function GET(
 
     const where: {
       projectId?: number;
+
       employeeId?: number;
+
       project?: {
         companyId: number;
       };
+
       OR?: Array<
         | {
             project: {
@@ -101,12 +152,13 @@ export async function GET(
       >;
     } = {
       project: {
-        companyId:
-          session.companyId,
+        companyId,
       },
     };
 
-    if (projectIdValue) {
+    if (
+      projectIdValue
+    ) {
       const projectId =
         Number(
           projectIdValue
@@ -116,7 +168,8 @@ export async function GET(
         !Number.isInteger(
           projectId
         ) ||
-        projectId <= 0
+        projectId <=
+          0
       ) {
         return NextResponse.json(
           {
@@ -134,10 +187,12 @@ export async function GET(
     }
 
     if (
-      session.role ===
+      role ===
       "Employee"
     ) {
-      if (employeeIdValue) {
+      if (
+        employeeIdValue
+      ) {
         const requestedEmployeeId =
           Number(
             employeeIdValue
@@ -147,7 +202,8 @@ export async function GET(
           !Number.isInteger(
             requestedEmployeeId
           ) ||
-          requestedEmployeeId <= 0
+          requestedEmployeeId <=
+            0
         ) {
           return NextResponse.json(
             {
@@ -162,7 +218,7 @@ export async function GET(
 
         if (
           requestedEmployeeId !==
-          session.employeeId
+          sessionEmployeeId
         ) {
           return NextResponse.json(
             {
@@ -176,7 +232,7 @@ export async function GET(
         }
 
         where.employeeId =
-          session.employeeId;
+          sessionEmployeeId;
       }
 
       where.OR = [
@@ -185,11 +241,12 @@ export async function GET(
             assignments: {
               some: {
                 employeeId:
-                  session.employeeId,
+                  sessionEmployeeId,
               },
             },
           },
         },
+
         {
           project: {
             scheduleAssignments: {
@@ -197,7 +254,7 @@ export async function GET(
                 employees: {
                   some: {
                     employeeId:
-                      session.employeeId,
+                      sessionEmployeeId,
                   },
                 },
               },
@@ -217,7 +274,8 @@ export async function GET(
         !Number.isInteger(
           employeeId
         ) ||
-        employeeId <= 0
+        employeeId <=
+          0
       ) {
         return NextResponse.json(
           {
@@ -239,12 +297,16 @@ export async function GET(
         where,
 
         include: {
-          employee: true,
-          project: true,
+          employee:
+            true,
+
+          project:
+            true,
         },
 
         orderBy: {
-          createdAt: "desc",
+          createdAt:
+            "desc",
         },
       });
 
@@ -290,6 +352,29 @@ export async function POST(
       );
     }
 
+    if (
+      !isCompanySession(
+        session
+      )
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Company access required.",
+        },
+        {
+          status: 403,
+        }
+      );
+    }
+
+    const {
+      companyId,
+      employeeId:
+        sessionEmployeeId,
+      role,
+    } = session;
+
     const body =
       await request.json();
 
@@ -322,7 +407,8 @@ export async function POST(
       !Number.isInteger(
         projectId
       ) ||
-      projectId <= 0
+      projectId <=
+        0
     ) {
       return NextResponse.json(
         {
@@ -370,7 +456,7 @@ export async function POST(
       number;
 
     if (
-      session.role ===
+      role ===
       "Employee"
     ) {
       if (
@@ -380,7 +466,7 @@ export async function POST(
         requestedEmployeeId >
           0 &&
         requestedEmployeeId !==
-          session.employeeId
+          sessionEmployeeId
       ) {
         return NextResponse.json(
           {
@@ -394,13 +480,14 @@ export async function POST(
       }
 
       employeeId =
-        session.employeeId;
+        sessionEmployeeId;
     } else {
       if (
         !Number.isInteger(
           requestedEmployeeId
         ) ||
-        requestedEmployeeId <= 0
+        requestedEmployeeId <=
+          0
       ) {
         return NextResponse.json(
           {
@@ -424,18 +511,22 @@ export async function POST(
       await Promise.all([
         prisma.project.findFirst({
           where: {
-            id: projectId,
-            companyId:
-              session.companyId,
+            id:
+              projectId,
+
+            companyId,
           },
         }),
 
         prisma.employee.findFirst({
           where: {
-            id: employeeId,
-            companyId:
-              session.companyId,
-            active: true,
+            id:
+              employeeId,
+
+            companyId,
+
+            active:
+              true,
           },
         }),
       ]);
@@ -479,14 +570,14 @@ export async function POST(
 
           assignment: {
             projectId,
-            companyId:
-              session.companyId,
+
+            companyId,
           },
         },
       });
 
     if (
-      session.role ===
+      role ===
         "Employee" &&
       !projectAssignment &&
       !scheduleAssignment
@@ -506,20 +597,27 @@ export async function POST(
       await prisma.jobPhoto.create({
         data: {
           projectId,
+
           employeeId,
+
           imageUrl:
             imageData,
 
           fileName:
-            fileName || null,
+            fileName ||
+            null,
 
           note:
-            note || null,
+            note ||
+            null,
         },
 
         include: {
-          employee: true,
-          project: true,
+          employee:
+            true,
+
+          project:
+            true,
         },
       });
 
@@ -568,6 +666,29 @@ export async function DELETE(
       );
     }
 
+    if (
+      !isCompanySession(
+        session
+      )
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Company access required.",
+        },
+        {
+          status: 403,
+        }
+      );
+    }
+
+    const {
+      companyId,
+      employeeId:
+        sessionEmployeeId,
+      role,
+    } = session;
+
     const url =
       new URL(
         request.url
@@ -586,8 +707,11 @@ export async function DELETE(
       );
 
     if (
-      !Number.isInteger(id) ||
-      id <= 0
+      !Number.isInteger(
+        id
+      ) ||
+      id <=
+        0
     ) {
       return NextResponse.json(
         {
@@ -605,7 +729,7 @@ export async function DELETE(
         null;
 
     if (
-      session.role ===
+      role ===
       "Employee"
     ) {
       if (
@@ -620,7 +744,8 @@ export async function DELETE(
           !Number.isInteger(
             requestedEmployeeId
           ) ||
-          requestedEmployeeId <= 0
+          requestedEmployeeId <=
+            0
         ) {
           return NextResponse.json(
             {
@@ -635,7 +760,7 @@ export async function DELETE(
 
         if (
           requestedEmployeeId !==
-          session.employeeId
+          sessionEmployeeId
         ) {
           return NextResponse.json(
             {
@@ -650,7 +775,7 @@ export async function DELETE(
       }
 
       employeeId =
-        session.employeeId;
+        sessionEmployeeId;
     } else if (
       employeeIdValue
     ) {
@@ -663,7 +788,8 @@ export async function DELETE(
         !Number.isInteger(
           requestedEmployeeId
         ) ||
-        requestedEmployeeId <= 0
+        requestedEmployeeId <=
+          0
       ) {
         return NextResponse.json(
           {
@@ -692,8 +818,7 @@ export async function DELETE(
             : {}),
 
           project: {
-            companyId:
-              session.companyId,
+            companyId,
           },
         },
       });
@@ -711,10 +836,10 @@ export async function DELETE(
     }
 
     if (
-      session.role ===
+      role ===
         "Employee" &&
       photo.employeeId !==
-        session.employeeId
+        sessionEmployeeId
     ) {
       return NextResponse.json(
         {
@@ -734,7 +859,8 @@ export async function DELETE(
     });
 
     return NextResponse.json({
-      success: true,
+      success:
+        true,
     });
   } catch (error) {
     console.error(

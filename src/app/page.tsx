@@ -1,13 +1,9 @@
 "use client";
 
-import {
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import AppLayout from "@/components/layout/AppLayout";
-
 import type { Project } from "@/lib/projects";
 
 type DatabaseEmployee = {
@@ -35,6 +31,17 @@ type TimeEntry = {
   projectName: string;
   clockIn: string;
   clockOut: string | null;
+};
+
+type SessionData = {
+  authenticated?: boolean;
+  user?: {
+    employeeId: number;
+    companyId: number;
+    name: string;
+    role: "Owner" | "Office" | "Employee";
+    isPlatformAdmin?: boolean;
+  };
 };
 
 function getEmployeeName(
@@ -82,35 +89,39 @@ function formatTime(
 }
 
 export default function DashboardPage() {
+  const router = useRouter();
+
+  const [
+    accessChecked,
+    setAccessChecked,
+  ] = useState(false);
+
+  const [
+    dashboardAllowed,
+    setDashboardAllowed,
+  ] = useState(false);
+
   const [
     projects,
     setProjects,
-  ] =
-    useState<Project[]>(
-      []
-    );
+  ] = useState<Project[]>([]);
 
   const [
     employees,
     setEmployees,
-  ] =
-    useState<
-      DatabaseEmployee[]
-    >([]);
+  ] = useState<
+    DatabaseEmployee[]
+  >([]);
 
   const [
     entries,
     setEntries,
-  ] =
-    useState<TimeEntry[]>(
-      []
-    );
+  ] = useState<TimeEntry[]>([]);
 
   const [
     currentTime,
     setCurrentTime,
-  ] =
-    useState(Date.now());
+  ] = useState(Date.now());
 
   async function loadDashboardData() {
     try {
@@ -118,52 +129,42 @@ export default function DashboardPage() {
         projectsResponse,
         employeesResponse,
         timeResponse,
-      ] =
-        await Promise.all([
-          fetch(
-            "/api/projects",
-            {
-              cache:
-                "no-store",
-            }
-          ),
+      ] = await Promise.all([
+        fetch(
+          "/api/projects",
+          {
+            cache: "no-store",
+          }
+        ),
 
-          fetch(
-            "/api/employees",
-            {
-              cache:
-                "no-store",
-            }
-          ),
+        fetch(
+          "/api/employees",
+          {
+            cache: "no-store",
+          }
+        ),
 
-          fetch(
-            "/api/time-entries",
-            {
-              cache:
-                "no-store",
-            }
-          ),
-        ]);
+        fetch(
+          "/api/time-entries",
+          {
+            cache: "no-store",
+          }
+        ),
+      ]);
 
-      if (
-        !projectsResponse.ok
-      ) {
+      if (!projectsResponse.ok) {
         throw new Error(
           "Unable to load projects."
         );
       }
 
-      if (
-        !employeesResponse.ok
-      ) {
+      if (!employeesResponse.ok) {
         throw new Error(
           "Unable to load employees."
         );
       }
 
-      if (
-        !timeResponse.ok
-      ) {
+      if (!timeResponse.ok) {
         throw new Error(
           "Unable to load time entries."
         );
@@ -173,33 +174,26 @@ export default function DashboardPage() {
         projectData,
         employeeData,
         timeData,
-      ] =
-        await Promise.all([
-          projectsResponse.json(),
-          employeesResponse.json(),
-          timeResponse.json(),
-        ]);
+      ] = await Promise.all([
+        projectsResponse.json(),
+        employeesResponse.json(),
+        timeResponse.json(),
+      ]);
 
       setProjects(
-        Array.isArray(
-          projectData
-        )
+        Array.isArray(projectData)
           ? projectData
           : []
       );
 
       setEmployees(
-        Array.isArray(
-          employeeData
-        )
+        Array.isArray(employeeData)
           ? employeeData
           : []
       );
 
       setEntries(
-        Array.isArray(
-          timeData
-        )
+        Array.isArray(timeData)
           ? timeData
           : []
       );
@@ -212,26 +206,117 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
-    void loadDashboardData();
-  }, []);
+    let cancelled = false;
+
+    async function checkDashboardAccess() {
+      try {
+        const response =
+          await fetch(
+            "/api/session",
+            {
+              cache: "no-store",
+            }
+          );
+
+        if (!response.ok) {
+          router.replace("/login");
+          return;
+        }
+
+        const data =
+          (await response.json()) as
+            SessionData;
+
+        if (
+          !data.authenticated ||
+          !data.user
+        ) {
+          router.replace("/login");
+          return;
+        }
+
+        const user =
+          data.user;
+
+        const isPlatformAdmin =
+          user.isPlatformAdmin ===
+          true;
+
+        const isOfficeUser =
+          user.role === "Owner" ||
+          user.role === "Office";
+
+        if (
+          !isPlatformAdmin &&
+          !isOfficeUser
+        ) {
+          router.replace(
+            "/employee-portal"
+          );
+          return;
+        }
+
+        if (!cancelled) {
+          setDashboardAllowed(true);
+          setAccessChecked(true);
+        }
+      } catch (error) {
+        console.error(
+          "Dashboard access check failed:",
+          error
+        );
+
+        router.replace(
+          "/login"
+        );
+      }
+    }
+
+    void checkDashboardAccess();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   useEffect(() => {
-    const timer =
+    if (!dashboardAllowed) {
+      return;
+    }
+
+    void loadDashboardData();
+
+    const refreshTimer =
+      window.setInterval(
+        () => {
+          void loadDashboardData();
+        },
+        30000
+      );
+
+    return () => {
+      window.clearInterval(
+        refreshTimer
+      );
+    };
+  }, [dashboardAllowed]);
+
+  useEffect(() => {
+    const clockTimer =
       window.setInterval(
         () => {
           setCurrentTime(
             Date.now()
           );
-
-          void loadDashboardData();
         },
         1000
       );
 
-    return () =>
+    return () => {
       window.clearInterval(
-        timer
+        clockTimer
       );
+    };
   }, []);
 
   const activeEmployees =
@@ -243,8 +328,7 @@ export default function DashboardPage() {
   const activeEntries =
     entries.filter(
       (entry) =>
-        entry.clockOut ===
-        null
+        entry.clockOut === null
     );
 
   const activeEmployeeIds =
@@ -279,7 +363,9 @@ export default function DashboardPage() {
   const todaysEntries =
     useMemo(() => {
       const today =
-        new Date().toDateString();
+        new Date(
+          currentTime
+        ).toDateString();
 
       return entries.filter(
         (entry) =>
@@ -288,7 +374,10 @@ export default function DashboardPage() {
           ).toDateString() ===
           today
       );
-    }, [entries]);
+    }, [
+      entries,
+      currentTime,
+    ]);
 
   const totalHoursToday =
     todaysEntries.reduce(
@@ -320,9 +409,22 @@ export default function DashboardPage() {
       )
       .filter(
         (group) =>
-          group.entries
-            .length > 0
+          group.entries.length >
+          0
       );
+
+  if (
+    !accessChecked ||
+    !dashboardAllowed
+  ) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-100 dark:bg-slate-950">
+        <p className="text-slate-500 dark:text-slate-400">
+          Loading JobClokr...
+        </p>
+      </div>
+    );
+  }
 
   return (
     <AppLayout>
@@ -339,31 +441,27 @@ export default function DashboardPage() {
         </div>
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-          <div className="rounded-xl bg-white p-6 shadow">
+          <div className="rounded-xl bg-white p-6 shadow dark:bg-slate-900">
             <p className="text-sm text-gray-500">
               Employees Working
             </p>
 
             <p className="mt-2 text-4xl font-bold">
-              {
-                activeEntries.length
-              }
+              {activeEntries.length}
             </p>
           </div>
 
-          <div className="rounded-xl bg-white p-6 shadow">
+          <div className="rounded-xl bg-white p-6 shadow dark:bg-slate-900">
             <p className="text-sm text-gray-500">
               Active Projects
             </p>
 
             <p className="mt-2 text-4xl font-bold">
-              {
-                crewByProject.length
-              }
+              {crewByProject.length}
             </p>
           </div>
 
-          <div className="rounded-xl bg-white p-6 shadow">
+          <div className="rounded-xl bg-white p-6 shadow dark:bg-slate-900">
             <p className="text-sm text-gray-500">
               Labor Hours Today
             </p>
@@ -377,13 +475,13 @@ export default function DashboardPage() {
         </div>
 
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-          <div className="rounded-xl bg-white p-6 shadow xl:col-span-2">
+          <div className="rounded-xl bg-white p-6 shadow dark:bg-slate-900 xl:col-span-2">
             <div className="mb-5 flex items-center justify-between">
               <h2 className="text-2xl font-semibold">
                 Currently Working
               </h2>
 
-              <span className="rounded-full bg-green-100 px-3 py-1 text-sm text-green-700">
+              <span className="rounded-full bg-green-100 px-3 py-1 text-sm text-green-700 dark:bg-green-950 dark:text-green-300">
                 Live
               </span>
             </div>
@@ -400,7 +498,7 @@ export default function DashboardPage() {
                       key={
                         project.id
                       }
-                      className="rounded-xl border p-5"
+                      className="rounded-xl border border-slate-200 p-5 dark:border-slate-700"
                     >
                       <div className="mb-4 flex items-center justify-between">
                         <div>
@@ -417,7 +515,7 @@ export default function DashboardPage() {
                           </p>
                         </div>
 
-                        <span className="rounded-full bg-green-100 px-3 py-1 text-sm text-green-700">
+                        <span className="rounded-full bg-green-100 px-3 py-1 text-sm text-green-700 dark:bg-green-950 dark:text-green-300">
                           {
                             entries.length
                           }{" "}
@@ -427,14 +525,12 @@ export default function DashboardPage() {
 
                       <div className="space-y-3">
                         {entries.map(
-                          (
-                            entry
-                          ) => (
+                          (entry) => (
                             <div
                               key={
                                 entry.id
                               }
-                              className="flex items-center justify-between rounded-lg border p-4"
+                              className="flex items-center justify-between rounded-lg border border-slate-200 p-4 dark:border-slate-700"
                             >
                               <div>
                                 <p className="font-medium">
@@ -470,7 +566,7 @@ export default function DashboardPage() {
                 )}
               </div>
             ) : (
-              <div className="rounded-xl border p-8 text-center text-gray-500">
+              <div className="rounded-xl border border-slate-200 p-8 text-center text-gray-500 dark:border-slate-700">
                 No employees are
                 currently clocked
                 in.
@@ -478,7 +574,7 @@ export default function DashboardPage() {
             )}
           </div>
 
-          <div className="rounded-xl bg-white p-6 shadow">
+          <div className="rounded-xl bg-white p-6 shadow dark:bg-slate-900">
             <h2 className="mb-5 text-2xl font-semibold">
               Not Clocked In
             </h2>
@@ -487,14 +583,12 @@ export default function DashboardPage() {
             0 ? (
               <div className="space-y-3">
                 {clockedOutEmployees.map(
-                  (
-                    employee
-                  ) => (
+                  (employee) => (
                     <div
                       key={
                         employee.id
                       }
-                      className="flex items-center gap-3 rounded-lg border p-4"
+                      className="flex items-center gap-3 rounded-lg border border-slate-200 p-4 dark:border-slate-700"
                     >
                       <span className="h-3 w-3 rounded-full bg-gray-300" />
 
@@ -519,26 +613,34 @@ export default function DashboardPage() {
 
         <div className="rounded-xl bg-white p-5 shadow dark:bg-slate-900 sm:p-6">
           <h2 className="mb-5 text-2xl font-semibold">
-            Today&apos;s Time Entries
+            Today&apos;s Time
+            Entries
           </h2>
 
-          {todaysEntries.length > 0 ? (
+          {todaysEntries.length >
+          0 ? (
             <>
               <div className="space-y-4 md:hidden">
                 {todaysEntries.map(
                   (entry) => (
                     <div
-                      key={entry.id}
+                      key={
+                        entry.id
+                      }
                       className="rounded-xl border border-slate-200 p-4 dark:border-slate-700"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="font-semibold">
-                            {entry.employeeName}
+                            {
+                              entry.employeeName
+                            }
                           </p>
 
                           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                            {entry.projectName}
+                            {
+                              entry.projectName
+                            }
                           </p>
                         </div>
 
@@ -551,7 +653,9 @@ export default function DashboardPage() {
                             {calculateHours(
                               entry.clockIn,
                               entry.clockOut
-                            ).toFixed(2)}
+                            ).toFixed(
+                              2
+                            )}
                           </p>
                         </div>
                       </div>
@@ -618,15 +722,21 @@ export default function DashboardPage() {
                     {todaysEntries.map(
                       (entry) => (
                         <tr
-                          key={entry.id}
+                          key={
+                            entry.id
+                          }
                           className="border-t dark:border-slate-700"
                         >
                           <td className="p-4">
-                            {entry.employeeName}
+                            {
+                              entry.employeeName
+                            }
                           </td>
 
                           <td className="p-4">
-                            {entry.projectName}
+                            {
+                              entry.projectName
+                            }
                           </td>
 
                           <td className="p-4">
@@ -647,7 +757,9 @@ export default function DashboardPage() {
                             {calculateHours(
                               entry.clockIn,
                               entry.clockOut
-                            ).toFixed(2)}
+                            ).toFixed(
+                              2
+                            )}
                           </td>
                         </tr>
                       )
@@ -658,7 +770,9 @@ export default function DashboardPage() {
             </>
           ) : (
             <p className="text-gray-500 dark:text-slate-400">
-              No time entries have been recorded today.
+              No time entries
+              have been recorded
+              today.
             </p>
           )}
         </div>

@@ -20,29 +20,36 @@ enum AssignmentPriority {
   EMERGENCY
 }
 
-enum SubscriptionStatus {
-  INCOMPLETE
-  TRIALING
-  ACTIVE
-  PAST_DUE
-  CANCELED
-}
+model PlatformAdmin {
+  id Int @id @default(autoincrement())
 
-model Company {
-  id   Int    @id @default(autoincrement())
-  name String
-  code String @unique
+  firstName String
+  lastName  String
 
-  subscriptionStatus SubscriptionStatus @default(INCOMPLETE)
+  email     String? @unique
+  loginName String  @unique
 
-  stripeCustomerId     String? @unique
-  stripeSubscriptionId String? @unique
+  passwordHash       String
+  mustChangePassword Boolean @default(false)
 
-  subscriptionCurrentPeriodStart DateTime?
-  subscriptionCurrentPeriodEnd   DateTime?
+  active Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Company {
+  id        Int      @id @default(autoincrement())
+  name      String
+  code      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stripeCustomerId               String?   @unique
+  stripeSubscriptionId           String?   @unique
+  subscriptionStatus             String    @default("INCOMPLETE")
+  subscriptionCurrentPeriodStart DateTime?
+  subscriptionCurrentPeriodEnd   DateTime?
 
   customers           Customer[]
   employees           Employee[]

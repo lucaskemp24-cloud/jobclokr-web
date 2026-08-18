@@ -8,15 +8,44 @@ import { useRouter } from "next/navigation";
 
 import { useToast } from "@/components/ui/ToastProvider";
 
-import {
-  loadAuthUser,
-  loginEmployee,
-  logoutUser,
-  type LoginEmployee,
-} from "@/lib/auth";
+type LoginMode =
+  | "company"
+  | "admin";
 
-type LoginResponse = {
-  employee: LoginEmployee & {
+type PlatformAdminLoginResponse = {
+  accountType: "PLATFORM_ADMIN";
+
+  user: {
+    id: number;
+    firstName: string;
+    lastName: string;
+    email: string | null;
+    loginName: string;
+    active: boolean;
+    mustChangePassword: boolean;
+    isPlatformAdmin: true;
+  };
+
+  company: null;
+};
+
+type CompanyLoginResponse = {
+  accountType: "COMPANY_USER";
+
+  employee: {
+    id: number;
+    companyId: number;
+    firstName: string;
+    lastName: string;
+
+    role:
+      | "OWNER"
+      | "OFFICE"
+      | "FOREMAN"
+      | "EMPLOYEE";
+
+    active: boolean;
+    isPlatformAdmin: false;
     mustChangePassword: boolean;
   };
 
@@ -24,27 +53,139 @@ type LoginResponse = {
     id: number;
     name: string;
     code: string;
+    subscriptionStatus: string;
   };
 };
 
-type SessionUser = {
+type SuccessfulLoginResponse =
+  | PlatformAdminLoginResponse
+  | CompanyLoginResponse;
+
+type PlatformAdminSessionUser = {
+  accountType:
+    "PLATFORM_ADMIN";
+
+  adminId: number;
+
+  employeeId: null;
+  companyId: null;
+
+  name: string;
+
+  role:
+    "PlatformAdmin";
+
+  isPlatformAdmin:
+    true;
+};
+
+type CompanySessionUser = {
+  accountType:
+    "COMPANY_USER";
+
+  adminId: null;
+
   employeeId: number;
   companyId: number;
+
   name: string;
+
   role:
     | "Owner"
     | "Office"
     | "Employee";
+
+  isPlatformAdmin:
+    false;
 };
+
+type SessionUser =
+  | PlatformAdminSessionUser
+  | CompanySessionUser;
 
 type SessionResponse = {
   authenticated: boolean;
   user: SessionUser | null;
 };
 
+function isSuccessfulLoginResponse(
+  value: unknown
+): value is SuccessfulLoginResponse {
+  if (
+    typeof value !==
+      "object" ||
+    value === null
+  ) {
+    return false;
+  }
+
+  if (
+    !(
+      "accountType" in
+      value
+    )
+  ) {
+    return false;
+  }
+
+  const accountType =
+    (
+      value as {
+        accountType?:
+          unknown;
+      }
+    ).accountType;
+
+  return (
+    accountType ===
+      "PLATFORM_ADMIN" ||
+    accountType ===
+      "COMPANY_USER"
+  );
+}
+
+function getErrorMessage(
+  value: unknown
+) {
+  if (
+    typeof value !==
+      "object" ||
+    value === null ||
+    !(
+      "error" in value
+    )
+  ) {
+    return null;
+  }
+
+  const error =
+    (
+      value as {
+        error?: unknown;
+      }
+    ).error;
+
+  return typeof error ===
+    "string"
+    ? error
+    : null;
+}
+
 export default function LoginPage() {
-  const router = useRouter();
-  const { showToast } = useToast();
+  const router =
+    useRouter();
+
+  const {
+    showToast,
+  } = useToast();
+
+  const [
+    loginMode,
+    setLoginMode,
+  ] =
+    useState<LoginMode>(
+      "company"
+    );
 
   const [
     companyCode,
@@ -72,7 +213,8 @@ export default function LoginPage() {
   ] = useState(true);
 
   useEffect(() => {
-    let cancelled = false;
+    let cancelled =
+      false;
 
     async function checkSession() {
       try {
@@ -80,60 +222,68 @@ export default function LoginPage() {
           await fetch(
             "/api/session",
             {
-              cache: "no-store",
+              cache:
+                "no-store",
             }
           );
+
+        if (
+          !response.ok
+        ) {
+          return;
+        }
 
         const data =
           (await response.json()) as
             SessionResponse;
 
-        if (cancelled) {
+        if (
+          cancelled ||
+          !data.authenticated ||
+          !data.user
+        ) {
           return;
         }
 
-        const savedUser =
-          loadAuthUser();
-
+        /*
+          PLATFORM ADMIN
+        */
         if (
-          response.ok &&
-          data.authenticated &&
-          data.user
+          data.user.accountType ===
+          "PLATFORM_ADMIN"
         ) {
-          if (
-            savedUser &&
-            savedUser.employeeId ===
-              data.user.employeeId &&
-            savedUser.companyId ===
-              data.user.companyId &&
-            savedUser.role ===
-              data.user.role
-          ) {
-            if (
-              data.user.role ===
-              "Employee"
-            ) {
-              router.replace(
-                "/employee-portal"
-              );
-            } else {
-              router.replace("/");
-            }
+          router.replace(
+            "/admin"
+          );
 
-            return;
-          }
-
-          logoutUser();
-        } else {
-          logoutUser();
+          return;
         }
+
+        /*
+          EMPLOYEE
+        */
+        if (
+          data.user.role ===
+          "Employee"
+        ) {
+          router.replace(
+            "/employee-portal"
+          );
+
+          return;
+        }
+
+        /*
+          OWNER / OFFICE
+        */
+        router.replace(
+          "/"
+        );
       } catch (error) {
         console.error(
           "Session check failed:",
           error
         );
-
-        logoutUser();
       } finally {
         if (!cancelled) {
           setCheckingSession(
@@ -146,7 +296,8 @@ export default function LoginPage() {
     void checkSession();
 
     return () => {
-      cancelled = true;
+      cancelled =
+        true;
     };
   }, [router]);
 
@@ -161,7 +312,11 @@ export default function LoginPage() {
         .trim()
         .toLowerCase();
 
-    if (!trimmedCompanyCode) {
+    if (
+      loginMode ===
+        "company" &&
+      !trimmedCompanyCode
+    ) {
       showToast(
         "Please enter your company code.",
         "error"
@@ -189,15 +344,16 @@ export default function LoginPage() {
     }
 
     try {
-      setSigningIn(true);
-
-      logoutUser();
+      setSigningIn(
+        true
+      );
 
       const response =
         await fetch(
           "/api/login",
           {
-            method: "POST",
+            method:
+              "POST",
 
             headers: {
               "Content-Type":
@@ -207,7 +363,10 @@ export default function LoginPage() {
             body:
               JSON.stringify({
                 companyCode:
-                  trimmedCompanyCode,
+                  loginMode ===
+                  "company"
+                    ? trimmedCompanyCode
+                    : "",
 
                 loginName:
                   trimmedLoginName,
@@ -217,25 +376,24 @@ export default function LoginPage() {
           }
         );
 
-      const data =
-        (await response.json()) as
-          | LoginResponse
-          | {
-              error?: string;
-            };
+      const rawData:
+        unknown =
+        await response.json();
 
-      if (!response.ok) {
+      if (
+        !response.ok
+      ) {
         throw new Error(
-          "error" in data &&
-            data.error
-            ? data.error
-            : "Unable to sign in."
+          getErrorMessage(
+            rawData
+          ) ||
+            "Unable to sign in."
         );
       }
 
       if (
-        !(
-          "employee" in data
+        !isSuccessfulLoginResponse(
+          rawData
         )
       ) {
         throw new Error(
@@ -243,22 +401,19 @@ export default function LoginPage() {
         );
       }
 
-      const user =
-        loginEmployee(
-          data.employee
-        );
+      const data =
+        rawData;
 
-      if (!user) {
-        throw new Error(
-          "Unable to sign in."
-        );
-      }
-
+      /*
+        Verify that the server actually
+        created the correct session.
+      */
       const sessionResponse =
         await fetch(
           "/api/session",
           {
-            cache: "no-store",
+            cache:
+              "no-store",
           }
         );
 
@@ -271,23 +426,76 @@ export default function LoginPage() {
         !sessionData.authenticated ||
         !sessionData.user
       ) {
-        logoutUser();
-
         throw new Error(
           "Your login was accepted, but the session could not be saved. Please try again."
         );
       }
 
+      /*
+        PLATFORM ADMIN
+      */
+      if (
+        data.accountType ===
+        "PLATFORM_ADMIN"
+      ) {
+        if (
+          sessionData.user.accountType !==
+          "PLATFORM_ADMIN"
+        ) {
+          throw new Error(
+            "The administrator session could not be verified."
+          );
+        }
+
+        if (
+          sessionData.user.adminId !==
+          data.user.id
+        ) {
+          throw new Error(
+            "The administrator session did not match the signed-in account."
+          );
+        }
+
+        if (
+          data.user
+            .mustChangePassword
+        ) {
+          router.replace(
+            "/change-password"
+          );
+
+          return;
+        }
+
+        /*
+          Platform admins go to the
+          JobClokr administration area.
+        */
+        router.replace(
+          "/admin"
+        );
+
+        return;
+      }
+
+      /*
+        COMPANY USER
+      */
+      if (
+        sessionData.user.accountType !==
+        "COMPANY_USER"
+      ) {
+        throw new Error(
+          "The company session could not be verified."
+        );
+      }
+
       if (
         sessionData.user.employeeId !==
-          user.employeeId ||
+          data.employee.id ||
         sessionData.user.companyId !==
-          user.companyId ||
-        sessionData.user.role !==
-          user.role
+          data.employee.companyId
       ) {
-        logoutUser();
-
         throw new Error(
           "The saved session did not match the selected company. Please sign in again."
         );
@@ -304,15 +512,26 @@ export default function LoginPage() {
         return;
       }
 
+      /*
+        REGULAR EMPLOYEE
+      */
       if (
-        user.role === "Employee"
+        sessionData.user.role ===
+        "Employee"
       ) {
         router.replace(
           "/employee-portal"
         );
-      } else {
-        router.replace("/");
+
+        return;
       }
+
+      /*
+        OWNER / OFFICE
+      */
+      router.replace(
+        "/"
+      );
     } catch (error) {
       console.error(
         "Login failed:",
@@ -326,8 +545,26 @@ export default function LoginPage() {
         "error"
       );
     } finally {
-      setSigningIn(false);
+      setSigningIn(
+        false
+      );
     }
+  }
+
+  function selectLoginMode(
+    mode: LoginMode
+  ) {
+    if (signingIn) {
+      return;
+    }
+
+    setLoginMode(
+      mode
+    );
+
+    setPassword(
+      ""
+    );
   }
 
   if (checkingSession) {
@@ -341,48 +578,105 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-100 px-4 dark:bg-slate-950">
+    <main className="flex min-h-screen items-center justify-center bg-slate-100 px-4 py-10 dark:bg-slate-950">
       <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-lg dark:bg-slate-900">
-        <div className="mb-8 text-center">
+        <div className="mb-7 text-center">
           <h1 className="text-3xl font-bold">
             JobClokr
           </h1>
 
           <p className="mt-2 text-slate-500 dark:text-slate-400">
-            Sign in to your company
+            {loginMode ===
+            "company"
+              ? "Sign in to your company"
+              : "JobClokr administration"}
           </p>
         </div>
 
-        <div className="space-y-5">
-          <div>
-            <label className="mb-2 block font-medium">
-              Company Code
-            </label>
+        <div className="mb-7 grid grid-cols-2 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
+          <button
+            type="button"
+            disabled={
+              signingIn
+            }
+            onClick={() =>
+              selectLoginMode(
+                "company"
+              )
+            }
+            className={`rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
+              loginMode ===
+              "company"
+                ? "bg-white shadow dark:bg-slate-700"
+                : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+            }`}
+          >
+            Company Login
+          </button>
 
-            <input
-              type="text"
-              value={companyCode}
-              disabled={signingIn}
-              onChange={(event) =>
-                setCompanyCode(
-                  event.target.value
-                )
-              }
-              onKeyDown={(event) => {
-                if (
-                  event.key ===
-                  "Enter"
-                ) {
-                  void handleLogin();
+          <button
+            type="button"
+            disabled={
+              signingIn
+            }
+            onClick={() =>
+              selectLoginMode(
+                "admin"
+              )
+            }
+            className={`rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
+              loginMode ===
+              "admin"
+                ? "bg-white shadow dark:bg-slate-700"
+                : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+            }`}
+          >
+            Admin Login
+          </button>
+        </div>
+
+        <div className="space-y-5">
+          {loginMode ===
+            "company" && (
+            <div>
+              <label className="mb-2 block font-medium">
+                Company Code
+              </label>
+
+              <input
+                type="text"
+                value={
+                  companyCode
                 }
-              }}
-              className="w-full rounded-lg border p-3 uppercase dark:bg-slate-950"
-              placeholder="Example: LUCAS"
-              autoCapitalize="characters"
-              autoCorrect="off"
-              autoComplete="organization"
-            />
-          </div>
+                disabled={
+                  signingIn
+                }
+                onChange={(
+                  event
+                ) =>
+                  setCompanyCode(
+                    event.target
+                      .value
+                  )
+                }
+                onKeyDown={(
+                  event
+                ) => {
+                  if (
+                    event.key ===
+                    "Enter"
+                  ) {
+                    void handleLogin();
+                  }
+                }}
+                className="w-full rounded-lg border border-slate-300 p-3 uppercase outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:border-blue-500 dark:focus:ring-blue-950"
+                placeholder="Example: LUCAS"
+                autoCapitalize="characters"
+                autoCorrect="off"
+                autoComplete="organization"
+              />
+            </div>
+          )}
 
           <div>
             <label className="mb-2 block font-medium">
@@ -391,14 +685,23 @@ export default function LoginPage() {
 
             <input
               type="text"
-              value={loginName}
-              disabled={signingIn}
-              onChange={(event) =>
+              value={
+                loginName
+              }
+              disabled={
+                signingIn
+              }
+              onChange={(
+                event
+              ) =>
                 setLoginName(
-                  event.target.value
+                  event.target
+                    .value
                 )
               }
-              onKeyDown={(event) => {
+              onKeyDown={(
+                event
+              ) => {
                 if (
                   event.key ===
                   "Enter"
@@ -406,8 +709,13 @@ export default function LoginPage() {
                   void handleLogin();
                 }
               }}
-              className="w-full rounded-lg border p-3 dark:bg-slate-950"
-              placeholder="Enter login name"
+              className="w-full rounded-lg border border-slate-300 p-3 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:border-blue-500 dark:focus:ring-blue-950"
+              placeholder={
+                loginMode ===
+                "admin"
+                  ? "Admin login name"
+                  : "Enter login name"
+              }
               autoCapitalize="none"
               autoCorrect="off"
               autoComplete="username"
@@ -421,22 +729,31 @@ export default function LoginPage() {
 
             <input
               type="password"
-              value={password}
-              disabled={signingIn}
-              onChange={(event) =>
+              value={
+                password
+              }
+              disabled={
+                signingIn
+              }
+              onChange={(
+                event
+              ) =>
                 setPassword(
-                  event.target.value
+                  event.target
+                    .value
                 )
               }
-              onKeyDown={(event) => {
+              onKeyDown={(
+                event
+              ) => {
                 if (
                   event.key ===
-                  "Enter"
+                    "Enter"
                 ) {
                   void handleLogin();
                 }
               }}
-              className="w-full rounded-lg border p-3 dark:bg-slate-950"
+              className="w-full rounded-lg border border-slate-300 p-3 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:border-blue-500 dark:focus:ring-blue-950"
               placeholder="Enter password"
               autoComplete="current-password"
             />
@@ -447,22 +764,24 @@ export default function LoginPage() {
             onClick={() =>
               void handleLogin()
             }
-            disabled={signingIn}
-            className="w-full rounded-lg bg-blue-600 p-3 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={
+              signingIn
+            }
+            className="w-full rounded-lg bg-blue-600 p-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {signingIn
               ? "Signing In..."
-              : "Sign In"}
+              : loginMode ===
+                  "admin"
+                ? "Sign In as Admin"
+                : "Sign In"}
           </button>
 
           <p className="text-center text-sm text-slate-500 dark:text-slate-400">
-            New to JobClokr?{" "}
-            <a
-              href="/signup"
-              className="font-semibold text-blue-600 hover:underline"
-            >
-              Create Business Account
-            </a>
+            {loginMode ===
+            "company"
+              ? "Need a JobClokr account? Contact JobClokr administration."
+              : "Platform administrator access only."}
           </p>
         </div>
       </div>

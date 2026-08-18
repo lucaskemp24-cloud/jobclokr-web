@@ -9,17 +9,44 @@ import { cookies } from "next/headers";
 
 import { prisma } from "@/lib/prisma";
 
-export type SessionRole =
+export type CompanySessionRole =
   | "Owner"
   | "Office"
   | "Employee";
 
-export type SessionUser = {
+export type PlatformAdminSession = {
+  accountType: "PLATFORM_ADMIN";
+
+  adminId: number;
+
+  employeeId: null;
+  companyId: null;
+
+  name: string;
+
+  role: "PlatformAdmin";
+
+  isPlatformAdmin: true;
+};
+
+export type CompanySession = {
+  accountType: "COMPANY_USER";
+
+  adminId: null;
+
   employeeId: number;
   companyId: number;
+
   name: string;
-  role: SessionRole;
+
+  role: CompanySessionRole;
+
+  isPlatformAdmin: false;
 };
+
+export type SessionUser =
+  | PlatformAdminSession
+  | CompanySession;
 
 const SESSION_COOKIE_NAME =
   "jobclokr-session";
@@ -122,47 +149,110 @@ function decodeSession(
         ).toString("utf8")
       ) as Partial<SessionUser>;
 
+    /*
+      PLATFORM ADMIN SESSION
+    */
     if (
-      typeof parsed.employeeId !==
-        "number" ||
-      typeof parsed.companyId !==
-        "number" ||
-      typeof parsed.name !==
-        "string" ||
-      (
-        parsed.role !== "Owner" &&
-        parsed.role !== "Office" &&
-        parsed.role !== "Employee"
-      )
+      parsed.accountType ===
+        "PLATFORM_ADMIN"
     ) {
-      return null;
+      if (
+        typeof parsed.adminId !==
+          "number" ||
+        typeof parsed.name !==
+          "string" ||
+        parsed.role !==
+          "PlatformAdmin" ||
+        parsed.isPlatformAdmin !==
+          true
+      ) {
+        return null;
+      }
+
+      return {
+        accountType:
+          "PLATFORM_ADMIN",
+
+        adminId:
+          parsed.adminId,
+
+        employeeId:
+          null,
+
+        companyId:
+          null,
+
+        name:
+          parsed.name,
+
+        role:
+          "PlatformAdmin",
+
+        isPlatformAdmin:
+          true,
+      };
     }
 
-    return {
-      employeeId:
-        parsed.employeeId,
+    /*
+      COMPANY USER SESSION
+    */
+    if (
+      parsed.accountType ===
+        "COMPANY_USER"
+    ) {
+      if (
+        typeof parsed.employeeId !==
+          "number" ||
+        typeof parsed.companyId !==
+          "number" ||
+        typeof parsed.name !==
+          "string" ||
+        parsed.isPlatformAdmin !==
+          false ||
+        (
+          parsed.role !==
+            "Owner" &&
+          parsed.role !==
+            "Office" &&
+          parsed.role !==
+            "Employee"
+        )
+      ) {
+        return null;
+      }
 
-      companyId:
-        parsed.companyId,
+      return {
+        accountType:
+          "COMPANY_USER",
 
-      name:
-        parsed.name,
+        adminId:
+          null,
 
-      role:
-        parsed.role,
-    };
+        employeeId:
+          parsed.employeeId,
+
+        companyId:
+          parsed.companyId,
+
+        name:
+          parsed.name,
+
+        role:
+          parsed.role,
+
+        isPlatformAdmin:
+          false,
+      };
+    }
+
+    return null;
   } catch {
     return null;
   }
 }
 
 function subscriptionAllowsAccess(
-  status:
-    | "INCOMPLETE"
-    | "TRIALING"
-    | "ACTIVE"
-    | "PAST_DUE"
-    | "CANCELED"
+  status: string
 ) {
   return (
     status === "ACTIVE" ||
@@ -201,6 +291,12 @@ export async function createSession(
   console.log(
     "[SESSION] Session cookie created.",
     {
+      accountType:
+        user.accountType,
+
+      adminId:
+        user.adminId,
+
       employeeId:
         user.employeeId,
 
@@ -210,13 +306,17 @@ export async function createSession(
       role:
         user.role,
 
+      isPlatformAdmin:
+        user.isPlatformAdmin,
+
       length:
         encodedSession.length,
     }
   );
 }
 
-export async function getSession() {
+export async function getSession():
+  Promise<SessionUser | null> {
   const cookieStore =
     await cookies();
 
@@ -244,6 +344,95 @@ export async function getSession() {
     return null;
   }
 
+  /*
+    ========================================
+    PLATFORM ADMIN
+    ========================================
+  */
+
+  if (
+    session.accountType ===
+    "PLATFORM_ADMIN"
+  ) {
+    const admin =
+      await prisma.platformAdmin.findUnique({
+        where: {
+          id:
+            session.adminId,
+        },
+
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          active: true,
+        },
+      });
+
+    if (
+      !admin ||
+      !admin.active
+    ) {
+      console.log(
+        "[SESSION] Platform administrator no longer has access.",
+        {
+          adminId:
+            session.adminId,
+        }
+      );
+
+      return null;
+    }
+
+    const name =
+      `${admin.firstName} ${admin.lastName}`.trim();
+
+    const currentSession:
+      PlatformAdminSession = {
+        accountType:
+          "PLATFORM_ADMIN",
+
+        adminId:
+          admin.id,
+
+        employeeId:
+          null,
+
+        companyId:
+          null,
+
+        name,
+
+        role:
+          "PlatformAdmin",
+
+        isPlatformAdmin:
+          true,
+      };
+
+    console.log(
+      "[SESSION] Valid platform admin session.",
+      {
+        adminId:
+          currentSession.adminId,
+
+        name:
+          currentSession.name,
+
+        role:
+          currentSession.role,
+      }
+    );
+
+    return currentSession;
+  }
+
+  /*
+    ========================================
+    COMPANY USER
+    ========================================
+  */
+
   const company =
     await prisma.company.findUnique({
       where: {
@@ -253,6 +442,7 @@ export async function getSession() {
 
       select: {
         id: true,
+
         subscriptionStatus:
           true,
       },
@@ -304,6 +494,9 @@ export async function getSession() {
 
       select: {
         id: true,
+        firstName: true,
+        lastName: true,
+        role: true,
       },
     });
 
@@ -322,24 +515,69 @@ export async function getSession() {
     return null;
   }
 
-  console.log(
-    "[SESSION] Valid session.",
-    {
+  const name =
+    `${employee.firstName} ${employee.lastName}`.trim();
+
+  let role:
+    CompanySessionRole;
+
+  if (
+    employee.role ===
+    "OWNER"
+  ) {
+    role =
+      "Owner";
+  } else if (
+    employee.role ===
+    "OFFICE"
+  ) {
+    role =
+      "Office";
+  } else {
+    role =
+      "Employee";
+  }
+
+  const currentSession:
+    CompanySession = {
+      accountType:
+        "COMPANY_USER",
+
+      adminId:
+        null,
+
       employeeId:
-        session.employeeId,
+        employee.id,
 
       companyId:
         session.companyId,
 
+      name,
+
+      role,
+
+      isPlatformAdmin:
+        false,
+    };
+
+  console.log(
+    "[SESSION] Valid company session.",
+    {
+      employeeId:
+        currentSession.employeeId,
+
+      companyId:
+        currentSession.companyId,
+
       role:
-        session.role,
+        currentSession.role,
 
       subscriptionStatus:
         company.subscriptionStatus,
     }
   );
 
-  return session;
+  return currentSession;
 }
 
 export async function deleteSession() {
@@ -355,11 +593,35 @@ export async function deleteSession() {
   );
 }
 
+export function isCompanySession(
+  user: SessionUser | null
+): user is CompanySession {
+  return (
+    user?.accountType ===
+    "COMPANY_USER"
+  );
+}
+
+export function isPlatformAdminSession(
+  user: SessionUser | null
+): user is PlatformAdminSession {
+  return (
+    user?.accountType ===
+    "PLATFORM_ADMIN"
+  );
+}
+
 export function isOfficeSession(
   user: SessionUser | null
 ) {
   return (
-    user?.role === "Owner" ||
-    user?.role === "Office"
+    user?.accountType ===
+      "COMPANY_USER" &&
+    (
+      user.role ===
+        "Owner" ||
+      user.role ===
+        "Office"
+    )
   );
 }

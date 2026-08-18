@@ -3,11 +3,14 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
   getSession,
-  isOfficeSession,
+  isCompanySession,
 } from "@/lib/session";
 
-const DEFAULT_LOOKBACK_DAYS = 30;
-const MAX_LOOKBACK_DAYS = 365;
+const DEFAULT_LOOKBACK_DAYS =
+  30;
+
+const MAX_LOOKBACK_DAYS =
+  365;
 
 function getDateOnly(
   value: Date
@@ -49,11 +52,50 @@ export async function GET(
     const session =
       await getSession();
 
+    if (!session) {
+      return NextResponse.json(
+        {
+          error:
+            "Authentication required.",
+        },
+        {
+          status: 401,
+        }
+      );
+    }
+
+    /*
+      This endpoint belongs to a company.
+
+      Standalone PlatformAdmin accounts
+      do not have a companyId, so they
+      cannot use this route directly.
+    */
     if (
-      !session ||
-      !isOfficeSession(
+      !isCompanySession(
         session
       )
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Company access required.",
+        },
+        {
+          status: 403,
+        }
+      );
+    }
+
+    /*
+      Only Owner and Office users should
+      be able to see the invoice queue.
+    */
+    if (
+      session.role !==
+        "Owner" &&
+      session.role !==
+        "Office"
     ) {
       return NextResponse.json(
         {
@@ -65,6 +107,9 @@ export async function GET(
         }
       );
     }
+
+    const companyId =
+      session.companyId;
 
     const url =
       new URL(
@@ -113,11 +158,20 @@ export async function GET(
         lookbackDays
     );
 
+    /*
+      Load completed time entries for this
+      company within the lookback period.
+
+      Today's entries are intentionally
+      excluded because the queue is for
+      completed prior work.
+    */
     const timeEntries =
       await prisma.timeEntry.findMany({
         where: {
           clockOut: {
-            not: null,
+            not:
+              null,
           },
 
           clockIn: {
@@ -129,33 +183,44 @@ export async function GET(
           },
 
           project: {
-            companyId:
-              session.companyId,
+            companyId,
           },
         },
 
         select: {
           id: true,
-          clockIn: true,
-          clockOut: true,
+
+          clockIn:
+            true,
+
+          clockOut:
+            true,
 
           employee: {
             select: {
               id: true,
-              firstName: true,
-              lastName: true,
+
+              firstName:
+                true,
+
+              lastName:
+                true,
             },
           },
 
           project: {
             select: {
               id: true,
-              name: true,
+
+              name:
+                true,
 
               customer: {
                 select: {
                   id: true,
-                  name: true,
+
+                  name:
+                    true,
                 },
               },
             },
@@ -163,37 +228,61 @@ export async function GET(
         },
 
         orderBy: {
-          clockIn: "asc",
+          clockIn:
+            "asc",
         },
       });
 
+    /*
+      Group completed time by:
+
+      work date + project
+    */
     const grouped =
       new Map<
         string,
         {
           workDate: string;
-          projectId: number;
-          projectName: string;
-          customerId: number;
-          customerName: string;
 
-          totalHours: number;
+          projectId:
+            number;
 
-          employees: Map<
-            number,
-            {
-              employeeId: number;
-              employeeName: string;
-              hours: number;
-            }
-          >;
+          projectName:
+            string;
+
+          customerId:
+            number;
+
+          customerName:
+            string;
+
+          totalHours:
+            number;
+
+          employees:
+            Map<
+              number,
+              {
+                employeeId:
+                  number;
+
+                employeeName:
+                  string;
+
+                hours:
+                  number;
+              }
+            >;
         }
       >();
 
     for (
-      const entry of timeEntries
+      const entry of
+      timeEntries
     ) {
-      if (!entry.clockOut) {
+      if (
+        !entry.clockOut
+      ) {
         continue;
       }
 
@@ -205,10 +294,13 @@ export async function GET(
       const key =
         `${workDate}:${entry.project.id}`;
 
-      const group =
+      const existingGroup =
         grouped.get(
           key
-        ) ?? {
+        );
+
+      const group =
+        existingGroup ?? {
           workDate,
 
           projectId:
@@ -223,7 +315,8 @@ export async function GET(
           customerName:
             entry.project.customer.name,
 
-          totalHours: 0,
+          totalHours:
+            0,
 
           employees:
             new Map(),
@@ -241,16 +334,20 @@ export async function GET(
       const employeeName =
         `${entry.employee.firstName} ${entry.employee.lastName}`.trim();
 
-      const employee =
+      const existingEmployee =
         group.employees.get(
           entry.employee.id
-        ) ?? {
+        );
+
+      const employee =
+        existingEmployee ?? {
           employeeId:
             entry.employee.id,
 
           employeeName,
 
-          hours: 0,
+          hours:
+            0,
         };
 
       employee.hours +=
@@ -273,7 +370,8 @@ export async function GET(
       );
 
     if (
-      groups.length === 0
+      groups.length ===
+      0
     ) {
       return NextResponse.json(
         []
@@ -306,41 +404,60 @@ export async function GET(
         groups[0].workDate
       );
 
+    /*
+      Load any invoice-status records that
+      overlap the work dates represented in
+      the queue.
+    */
     const invoiceStatuses =
       await prisma.projectInvoiceStatus.findMany({
         where: {
-          companyId:
-            session.companyId,
+          companyId,
 
-          invoiced: true,
+          invoiced:
+            true,
 
           startDate: {
-            gte:
-              getUtcDate(
-                earliestDate
-              ),
-          },
-
-          endDate: {
             lte:
               getUtcDate(
                 latestDate
               ),
           },
+
+          endDate: {
+            gte:
+              getUtcDate(
+                earliestDate
+              ),
+          },
         },
 
         select: {
-          projectId: true,
-          startDate: true,
-          endDate: true,
-          invoiced: true,
-          invoicedAt: true,
-          markedByEmployeeId: true,
+          projectId:
+            true,
+
+          startDate:
+            true,
+
+          endDate:
+            true,
+
+          invoiced:
+            true,
+
+          invoicedAt:
+            true,
+
+          markedByEmployeeId:
+            true,
 
           markedByEmployee: {
             select: {
-              firstName: true,
-              lastName: true,
+              firstName:
+                true,
+
+              lastName:
+                true,
             },
           },
         },
@@ -349,6 +466,12 @@ export async function GET(
     const invoicedKeys =
       new Set<string>();
 
+    /*
+      A work-date/project combination is
+      considered invoiced whenever that date
+      falls inside an invoiced status range
+      for the same project.
+    */
     for (
       const status of
       invoiceStatuses
@@ -369,17 +492,9 @@ export async function GET(
           status.endDate
         );
 
-      /*
-        A daily invoice status is the safest
-        match for the queue.
-
-        Range-based report statuses are also
-        honored below for dates contained
-        within that range.
-      */
-
       for (
-        const group of groups
+        const group of
+        groups
       ) {
         if (
           group.projectId !==
@@ -401,16 +516,24 @@ export async function GET(
       }
     }
 
+    /*
+      Return only work that has not yet been
+      marked invoiced.
+    */
     const queue =
       groups
         .filter(
-          (group) =>
+          (
+            group
+          ) =>
             !invoicedKeys.has(
               `${group.workDate}:${group.projectId}`
             )
         )
         .map(
-          (group) => ({
+          (
+            group
+          ) => ({
             workDate:
               group.workDate,
 

@@ -16,6 +16,7 @@ export type LoginEmployee = {
   lastName: string;
   role: DatabaseEmployeeRole;
   active: boolean;
+  isPlatformAdmin: boolean;
 };
 
 export type AuthUser = {
@@ -23,6 +24,7 @@ export type AuthUser = {
   companyId: number;
   name: string;
   role: UserRole;
+  isPlatformAdmin: boolean;
 };
 
 const AUTH_STORAGE_KEY =
@@ -45,7 +47,6 @@ function getRole(
     return "Office";
   }
 
-  // Foremen use the field/employee portal for now.
   return "Employee";
 }
 
@@ -67,8 +68,9 @@ export function loadAuthUser():
 
   try {
     const parsedUser =
-      JSON.parse(savedUser) as
-        Partial<AuthUser>;
+      JSON.parse(
+        savedUser
+      ) as Partial<AuthUser>;
 
     if (
       typeof parsedUser.employeeId !==
@@ -102,6 +104,10 @@ export function loadAuthUser():
 
       role:
         parsedUser.role,
+
+      isPlatformAdmin:
+        parsedUser.isPlatformAdmin ===
+        true,
     };
   } catch {
     window.localStorage.removeItem(
@@ -131,10 +137,15 @@ export function loginEmployee(
       employee.companyId,
 
     name:
-      getEmployeeName(employee),
+      getEmployeeName(
+        employee
+      ),
 
     role:
       getRole(employee),
+
+    isPlatformAdmin:
+      employee.isPlatformAdmin,
   };
 
   window.localStorage.setItem(
@@ -160,6 +171,15 @@ export function isOfficeUser(
 ) {
   return (
     user?.role === "Owner" ||
-    user?.role === "Office"
+    user?.role === "Office" ||
+    user?.isPlatformAdmin === true
+  );
+}
+
+export function isPlatformAdmin(
+  user: AuthUser | null
+) {
+  return (
+    user?.isPlatformAdmin === true
   );
 }

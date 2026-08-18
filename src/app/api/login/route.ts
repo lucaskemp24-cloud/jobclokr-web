@@ -23,12 +23,7 @@ function getSessionRole(
 }
 
 function companyHasAccess(
-  status:
-    | "INCOMPLETE"
-    | "TRIALING"
-    | "ACTIVE"
-    | "PAST_DUE"
-    | "CANCELED"
+  status: string
 ) {
   return (
     status === "ACTIVE" ||
@@ -62,15 +57,155 @@ export async function POST(
         body.password ?? ""
       );
 
+    /*
+      Login name and password are always
+      required.
+
+      Company code is NOT required for a
+      PlatformAdmin.
+    */
     if (
-      !companyCode ||
       !loginName ||
       !password
     ) {
       return NextResponse.json(
         {
           error:
-            "Company code, login name, and password are required.",
+            "Login name and password are required.",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
+    /*
+      ========================================
+      PLATFORM ADMIN LOGIN
+      ========================================
+
+      Platform administrators are completely
+      separate from employees and companies.
+
+      We check PlatformAdmin first.
+    */
+
+    const platformAdmin =
+      await prisma.platformAdmin.findUnique({
+        where: {
+          loginName,
+        },
+
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          loginName: true,
+          passwordHash: true,
+          mustChangePassword: true,
+          active: true,
+        },
+      });
+
+    if (
+      platformAdmin &&
+      platformAdmin.active
+    ) {
+      const passwordMatches =
+        await compare(
+          password,
+          platformAdmin.passwordHash
+        );
+
+      if (passwordMatches) {
+        const name =
+          `${platformAdmin.firstName} ${platformAdmin.lastName}`.trim();
+
+        await createSession({
+          accountType:
+            "PLATFORM_ADMIN",
+
+          adminId:
+            platformAdmin.id,
+
+          employeeId:
+            null,
+
+          companyId:
+            null,
+
+          name,
+
+          role:
+            "PlatformAdmin",
+
+          isPlatformAdmin:
+            true,
+        });
+
+        console.log(
+          "[LOGIN] Platform administrator signed in.",
+          {
+            adminId:
+              platformAdmin.id,
+
+            loginName:
+              platformAdmin.loginName,
+          }
+        );
+
+        return NextResponse.json({
+          accountType:
+            "PLATFORM_ADMIN",
+
+          user: {
+            id:
+              platformAdmin.id,
+
+            firstName:
+              platformAdmin.firstName,
+
+            lastName:
+              platformAdmin.lastName,
+
+            email:
+              platformAdmin.email,
+
+            loginName:
+              platformAdmin.loginName,
+
+            active:
+              platformAdmin.active,
+
+            mustChangePassword:
+              platformAdmin.mustChangePassword,
+
+            isPlatformAdmin:
+              true,
+          },
+
+          company:
+            null,
+        });
+      }
+    }
+
+    /*
+      ========================================
+      COMPANY USER LOGIN
+      ========================================
+
+      If this was not a valid platform-admin
+      login, continue with normal company
+      authentication.
+    */
+
+    if (!companyCode) {
+      return NextResponse.json(
+        {
+          error:
+            "Company code is required for company users.",
         },
         {
           status: 400,
@@ -81,13 +216,15 @@ export async function POST(
     const company =
       await prisma.company.findUnique({
         where: {
-          code: companyCode,
+          code:
+            companyCode,
         },
 
         select: {
           id: true,
           name: true,
           code: true,
+
           subscriptionStatus:
             true,
         },
@@ -113,9 +250,11 @@ export async function POST(
       return NextResponse.json(
         {
           error:
-            "This company's JobClokr subscription is not active. Please contact your company administrator.",
+            "This company's JobClokr subscription is not active. Please contact JobClokr administration.",
+
           code:
             "SUBSCRIPTION_INACTIVE",
+
           subscriptionStatus:
             company.subscriptionStatus,
         },
@@ -184,6 +323,12 @@ export async function POST(
       `${employee.firstName} ${employee.lastName}`.trim();
 
     await createSession({
+      accountType:
+        "COMPANY_USER",
+
+      adminId:
+        null,
+
       employeeId:
         employee.id,
 
@@ -196,9 +341,29 @@ export async function POST(
         getSessionRole(
           employee.role
         ),
+
+      isPlatformAdmin:
+        false,
     });
 
+    console.log(
+      "[LOGIN] Company user signed in.",
+      {
+        employeeId:
+          employee.id,
+
+        companyId:
+          employee.companyId,
+
+        role:
+          employee.role,
+      }
+    );
+
     return NextResponse.json({
+      accountType:
+        "COMPANY_USER",
+
       employee: {
         id:
           employee.id,
@@ -217,6 +382,9 @@ export async function POST(
 
         active:
           employee.active,
+
+        isPlatformAdmin:
+          false,
 
         mustChangePassword:
           employee.mustChangePassword,
@@ -238,7 +406,7 @@ export async function POST(
     });
   } catch (error) {
     console.error(
-      "Employee login failed:",
+      "Login failed:",
       error
     );
 
