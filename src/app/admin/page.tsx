@@ -1,22 +1,37 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import {
+  useEffect,
+  useState,
+} from "react";
+import {
+  useRouter,
+} from "next/navigation";
 
 type PlatformAdminSession = {
-  accountType: "PLATFORM_ADMIN";
+  accountType:
+    "PLATFORM_ADMIN";
+
   adminId: number;
   employeeId: null;
   companyId: null;
+
   name: string;
-  role: "PlatformAdmin";
-  isPlatformAdmin: true;
+
+  role:
+    "PlatformAdmin";
+
+  isPlatformAdmin:
+    true;
 };
 
 type SessionResponse = {
   authenticated: boolean;
-  user: PlatformAdminSession | null;
+
+  user:
+    | PlatformAdminSession
+    | null;
 };
 
 export default function AdminPage() {
@@ -26,14 +41,16 @@ export default function AdminPage() {
   const [
     loading,
     setLoading,
-  ] = useState(true);
+  ] =
+    useState(true);
 
   const [
     adminName,
     setAdminName,
-  ] = useState(
-    "Administrator"
-  );
+  ] =
+    useState(
+      "Administrator"
+    );
 
   useEffect(() => {
     let cancelled =
@@ -102,7 +119,9 @@ export default function AdminPage() {
       cancelled =
         true;
     };
-  }, [router]);
+  }, [
+    router,
+  ]);
 
   async function handleLogout() {
     try {
@@ -156,7 +175,9 @@ export default function AdminPage() {
           <div className="flex items-center gap-4">
             <div className="text-right">
               <p className="font-semibold text-slate-950 dark:text-white">
-                {adminName}
+                {
+                  adminName
+                }
               </p>
 
               <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -184,11 +205,16 @@ export default function AdminPage() {
           </p>
 
           <h2 className="mt-2 text-4xl font-bold text-slate-950 dark:text-white">
-            Welcome, {adminName}
+            Welcome,{" "}
+            {
+              adminName
+            }
           </h2>
 
           <p className="mt-2 max-w-2xl text-slate-500 dark:text-slate-400">
-            Manage JobClokr companies, subscriptions, and platform access from one place.
+            Manage JobClokr companies,
+            subscriptions, and platform
+            access from one place.
           </p>
         </div>
 
@@ -203,7 +229,8 @@ export default function AdminPage() {
             </h3>
 
             <p className="mt-2 text-slate-500 dark:text-slate-400">
-              View and manage JobClokr customer companies.
+              View and manage JobClokr
+              customer companies.
             </p>
 
             <Link
@@ -224,16 +251,16 @@ export default function AdminPage() {
             </h3>
 
             <p className="mt-2 text-slate-500 dark:text-slate-400">
-              Review billing and company subscription status.
+              Review billing and company
+              subscription status.
             </p>
 
-            <button
-              type="button"
-              disabled
-              className="mt-6 w-full rounded-lg bg-slate-200 px-4 py-3 font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+            <Link
+              href="/admin/subscriptions"
+              className="mt-6 block w-full rounded-lg bg-blue-600 px-4 py-3 text-center font-semibold text-white transition hover:bg-blue-700"
             >
-              Billing Coming Next
-            </button>
+              Manage Subscriptions
+            </Link>
           </div>
 
           <div className="rounded-2xl bg-white p-6 shadow dark:bg-slate-900">
@@ -246,16 +273,17 @@ export default function AdminPage() {
             </h3>
 
             <p className="mt-2 text-slate-500 dark:text-slate-400">
-              Manage JobClokr administrator accounts and access.
+              Manage JobClokr
+              administrator accounts and
+              access.
             </p>
 
-            <button
-              type="button"
-              disabled
-              className="mt-6 w-full rounded-lg bg-slate-200 px-4 py-3 font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+            <Link
+              href="/admin/platform-access"
+              className="mt-6 block w-full rounded-lg bg-blue-600 px-4 py-3 text-center font-semibold text-white transition hover:bg-blue-700"
             >
-              Admin Tools Coming Next
-            </button>
+              Manage Platform Access
+            </Link>
           </div>
         </div>
 
@@ -265,7 +293,9 @@ export default function AdminPage() {
           </h3>
 
           <p className="mt-2 text-blue-800 dark:text-blue-200">
-            This account is not assigned to any customer company or employee record.
+            This account is not assigned
+            to any customer company or
+            employee record.
           </p>
         </div>
       </div>
