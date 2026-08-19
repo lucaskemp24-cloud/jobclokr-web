@@ -1,8 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-
 import AppLayout from "@/components/layout/AppLayout";
 import type { Project } from "@/lib/projects";
 
@@ -31,17 +29,6 @@ type TimeEntry = {
   projectName: string;
   clockIn: string;
   clockOut: string | null;
-};
-
-type SessionData = {
-  authenticated?: boolean;
-  user?: {
-    employeeId: number;
-    companyId: number;
-    name: string;
-    role: "Owner" | "Office" | "Employee";
-    isPlatformAdmin?: boolean;
-  };
 };
 
 function getEmployeeName(
@@ -89,18 +76,6 @@ function formatTime(
 }
 
 export default function DashboardPage() {
-  const router = useRouter();
-
-  const [
-    accessChecked,
-    setAccessChecked,
-  ] = useState(false);
-
-  const [
-    dashboardAllowed,
-    setDashboardAllowed,
-  ] = useState(false);
-
   const [
     projects,
     setProjects,
@@ -206,84 +181,6 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function checkDashboardAccess() {
-      try {
-        const response =
-          await fetch(
-            "/api/session",
-            {
-              cache: "no-store",
-            }
-          );
-
-        if (!response.ok) {
-          router.replace("/login");
-          return;
-        }
-
-        const data =
-          (await response.json()) as
-            SessionData;
-
-        if (
-          !data.authenticated ||
-          !data.user
-        ) {
-          router.replace("/login");
-          return;
-        }
-
-        const user =
-          data.user;
-
-        const isPlatformAdmin =
-          user.isPlatformAdmin ===
-          true;
-
-        const isOfficeUser =
-          user.role === "Owner" ||
-          user.role === "Office";
-
-        if (
-          !isPlatformAdmin &&
-          !isOfficeUser
-        ) {
-          router.replace(
-            "/employee-portal"
-          );
-          return;
-        }
-
-        if (!cancelled) {
-          setDashboardAllowed(true);
-          setAccessChecked(true);
-        }
-      } catch (error) {
-        console.error(
-          "Dashboard access check failed:",
-          error
-        );
-
-        router.replace(
-          "/login"
-        );
-      }
-    }
-
-    void checkDashboardAccess();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [router]);
-
-  useEffect(() => {
-    if (!dashboardAllowed) {
-      return;
-    }
-
     void loadDashboardData();
 
     const refreshTimer =
@@ -299,7 +196,7 @@ export default function DashboardPage() {
         refreshTimer
       );
     };
-  }, [dashboardAllowed]);
+  }, []);
 
   useEffect(() => {
     const clockTimer =
@@ -412,19 +309,6 @@ export default function DashboardPage() {
           group.entries.length >
           0
       );
-
-  if (
-    !accessChecked ||
-    !dashboardAllowed
-  ) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-100 dark:bg-slate-950">
-        <p className="text-slate-500 dark:text-slate-400">
-          Loading JobClokr...
-        </p>
-      </div>
-    );
-  }
 
   return (
     <AppLayout>

@@ -57,11 +57,8 @@ type SessionResponse = {
 export default function AppLayout({
   children,
 }: AppLayoutProps) {
-  const router =
-    useRouter();
-
-  const pathname =
-    usePathname();
+  const router = useRouter();
+  const pathname = usePathname();
 
   const [
     user,
@@ -84,8 +81,7 @@ export default function AppLayout({
     useState(false);
 
   useEffect(() => {
-    let cancelled =
-      false;
+    let cancelled = false;
 
     async function loadSession() {
       try {
@@ -93,8 +89,7 @@ export default function AppLayout({
           await fetch(
             "/api/session",
             {
-              cache:
-                "no-store",
+              cache: "no-store",
             }
           );
 
@@ -102,9 +97,7 @@ export default function AppLayout({
           (await response.json()) as
             SessionResponse;
 
-        if (
-          cancelled
-        ) {
+        if (cancelled) {
           return;
         }
 
@@ -113,8 +106,28 @@ export default function AppLayout({
           !data.authenticated ||
           !data.user
         ) {
+          setUser(null);
+          setAuthLoaded(true);
+
+          router.replace(
+            "/login"
+          );
+
+          return;
+        }
+
+        const officeUser =
+          data.user.role ===
+            "Owner" ||
+          data.user.role ===
+            "Office" ||
+          data.user
+            .isPlatformAdmin ===
+            true;
+
+        if (!officeUser) {
           setUser(
-            null
+            data.user
           );
 
           setAuthLoaded(
@@ -122,7 +135,7 @@ export default function AppLayout({
           );
 
           router.replace(
-            "/login"
+            "/employee-portal"
           );
 
           return;
@@ -141,19 +154,12 @@ export default function AppLayout({
           error
         );
 
-        if (
-          cancelled
-        ) {
+        if (cancelled) {
           return;
         }
 
-        setUser(
-          null
-        );
-
-        setAuthLoaded(
-          true
-        );
+        setUser(null);
+        setAuthLoaded(true);
 
         router.replace(
           "/login"
@@ -164,8 +170,7 @@ export default function AppLayout({
     void loadSession();
 
     return () => {
-      cancelled =
-        true;
+      cancelled = true;
     };
   }, [router]);
 
@@ -231,9 +236,7 @@ export default function AppLayout({
   }, [pathname]);
 
   useEffect(() => {
-    if (
-      !mobileMenuOpen
-    ) {
+    if (!mobileMenuOpen) {
       return;
     }
 

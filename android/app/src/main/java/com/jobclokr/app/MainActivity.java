@@ -1,6 +1,7 @@
 package com.jobclokr.app;
 
 import android.os.Bundle;
+import android.webkit.WebView;
 
 import com.getcapacitor.BridgeActivity;
 
@@ -11,5 +12,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(NativePrintPlugin.class);
 
         super.onCreate(savedInstanceState);
+
+        WebView.setWebContentsDebuggingEnabled(true);
     }
 }
