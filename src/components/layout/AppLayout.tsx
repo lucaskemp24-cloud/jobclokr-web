@@ -26,13 +26,27 @@ type AppLayoutProps = {
 };
 
 type SessionUser = {
-  employeeId: number;
-  companyId: number;
+  accountType:
+    | "COMPANY_USER"
+    | "PLATFORM_ADMIN";
+
+  employeeId:
+    | number
+    | null;
+
+  companyId:
+    | number
+    | null;
+
   name: string;
+
   role:
     | "Owner"
     | "Office"
-    | "Employee";
+    | "Employee"
+    | "PlatformAdmin";
+
+  isPlatformAdmin: boolean;
 };
 
 type SessionResponse = {
@@ -43,30 +57,44 @@ type SessionResponse = {
 export default function AppLayout({
   children,
 }: AppLayoutProps) {
-  const router = useRouter();
-  const pathname = usePathname();
+  const router =
+    useRouter();
 
-  const [user, setUser] =
+  const pathname =
+    usePathname();
+
+  const [
+    user,
+    setUser,
+  ] =
     useState<SessionUser | null>(
       null
     );
 
-  const [authLoaded, setAuthLoaded] =
+  const [
+    authLoaded,
+    setAuthLoaded,
+  ] =
     useState(false);
 
   const [
     mobileMenuOpen,
     setMobileMenuOpen,
-  ] = useState(false);
+  ] =
+    useState(false);
 
   useEffect(() => {
+    let cancelled =
+      false;
+
     async function loadSession() {
       try {
         const response =
           await fetch(
             "/api/session",
             {
-              cache: "no-store",
+              cache:
+                "no-store",
             }
           );
 
@@ -75,12 +103,23 @@ export default function AppLayout({
             SessionResponse;
 
         if (
+          cancelled
+        ) {
+          return;
+        }
+
+        if (
           !response.ok ||
           !data.authenticated ||
           !data.user
         ) {
-          setUser(null);
-          setAuthLoaded(true);
+          setUser(
+            null
+          );
+
+          setAuthLoaded(
+            true
+          );
 
           router.replace(
             "/login"
@@ -89,55 +128,32 @@ export default function AppLayout({
           return;
         }
 
-        const officeUser =
-          data.user.role ===
-            "Owner" ||
-          data.user.role ===
-            "Office";
+        setUser(
+          data.user
+        );
 
-        const employeePortalRoute =
-          pathname ===
-            "/employee-portal" ||
-          pathname.startsWith(
-            "/employee-portal/"
-          );
-
-        if (
-          !officeUser &&
-          !employeePortalRoute
-        ) {
-          setUser(data.user);
-          setAuthLoaded(true);
-
-          router.replace(
-            "/employee-portal"
-          );
-
-          return;
-        }
-
-        if (
-          officeUser &&
-          employeePortalRoute
-        ) {
-          setUser(data.user);
-          setAuthLoaded(true);
-
-          router.replace("/");
-
-          return;
-        }
-
-        setUser(data.user);
-        setAuthLoaded(true);
+        setAuthLoaded(
+          true
+        );
       } catch (error) {
         console.error(
           "Session load failed:",
           error
         );
 
-        setUser(null);
-        setAuthLoaded(true);
+        if (
+          cancelled
+        ) {
+          return;
+        }
+
+        setUser(
+          null
+        );
+
+        setAuthLoaded(
+          true
+        );
 
         router.replace(
           "/login"
@@ -146,7 +162,12 @@ export default function AppLayout({
     }
 
     void loadSession();
-  }, [pathname, router]);
+
+    return () => {
+      cancelled =
+        true;
+    };
+  }, [router]);
 
   useEffect(() => {
     applySavedTheme();
@@ -161,7 +182,9 @@ export default function AppLayout({
         loadSettings().theme ===
         "System"
       ) {
-        applyTheme("System");
+        applyTheme(
+          "System"
+        );
       }
     }
 
@@ -169,7 +192,8 @@ export default function AppLayout({
       event: Event
     ) {
       const customEvent =
-        event as CustomEvent<CompanySettings>;
+        event as
+          CustomEvent<CompanySettings>;
 
       applyTheme(
         customEvent.detail?.theme ??
@@ -201,19 +225,28 @@ export default function AppLayout({
   }, []);
 
   useEffect(() => {
-    setMobileMenuOpen(false);
+    setMobileMenuOpen(
+      false
+    );
   }, [pathname]);
 
   useEffect(() => {
-    if (!mobileMenuOpen) {
+    if (
+      !mobileMenuOpen
+    ) {
       return;
     }
 
     function handleEscape(
       event: KeyboardEvent
     ) {
-      if (event.key === "Escape") {
-        setMobileMenuOpen(false);
+      if (
+        event.key ===
+        "Escape"
+      ) {
+        setMobileMenuOpen(
+          false
+        );
       }
     }
 
@@ -234,9 +267,14 @@ export default function AppLayout({
         handleEscape
       );
     };
-  }, [mobileMenuOpen]);
+  }, [
+    mobileMenuOpen,
+  ]);
 
-  if (!authLoaded || !user) {
+  if (
+    !authLoaded ||
+    !user
+  ) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-100 p-4 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
         <div className="rounded-xl bg-white px-8 py-6 text-center text-gray-500 shadow dark:bg-slate-900 dark:text-slate-300">
@@ -253,7 +291,9 @@ export default function AppLayout({
           mobileMenuOpen
         }
         onMobileClose={() =>
-          setMobileMenuOpen(false)
+          setMobileMenuOpen(
+            false
+          )
         }
       />
 
@@ -262,7 +302,9 @@ export default function AppLayout({
           type="button"
           aria-label="Close navigation menu"
           onClick={() =>
-            setMobileMenuOpen(false)
+            setMobileMenuOpen(
+              false
+            )
           }
           className="fixed inset-0 z-30 bg-black/50 lg:hidden"
         />
@@ -271,7 +313,9 @@ export default function AppLayout({
       <div className="min-w-0 lg:pl-56">
         <TopBar
           onMenuClick={() =>
-            setMobileMenuOpen(true)
+            setMobileMenuOpen(
+              true
+            )
           }
         />
 
