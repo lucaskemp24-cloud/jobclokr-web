@@ -5,6 +5,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+
 import {
   usePathname,
   useRouter,
@@ -26,17 +27,14 @@ type AppLayoutProps = {
 };
 
 type SessionUser = {
-  accountType:
+  accountType?:
     | "COMPANY_USER"
     | "PLATFORM_ADMIN";
 
-  employeeId:
-    | number
-    | null;
+  adminId?: number | null;
 
-  companyId:
-    | number
-    | null;
+  employeeId: number | null;
+  companyId: number | null;
 
   name: string;
 
@@ -46,7 +44,7 @@ type SessionUser = {
     | "Employee"
     | "PlatformAdmin";
 
-  isPlatformAdmin: boolean;
+  isPlatformAdmin?: boolean;
 };
 
 type SessionResponse = {
@@ -60,25 +58,30 @@ export default function AppLayout({
   const router = useRouter();
   const pathname = usePathname();
 
-  const [
-    user,
-    setUser,
-  ] =
+  const [user, setUser] =
     useState<SessionUser | null>(
       null
     );
 
-  const [
-    authLoaded,
-    setAuthLoaded,
-  ] =
+  const [authLoaded, setAuthLoaded] =
     useState(false);
 
   const [
     mobileMenuOpen,
     setMobileMenuOpen,
-  ] =
-    useState(false);
+  ] = useState(false);
+
+  /*
+    ========================================
+    LOAD SERVER SESSION
+    ========================================
+
+    The server session is the single source
+    of truth for authentication.
+
+    Sidebar and TopBar should NOT perform
+    their own redirects based on localStorage.
+  */
 
   useEffect(() => {
     let cancelled = false;
@@ -89,7 +92,9 @@ export default function AppLayout({
           await fetch(
             "/api/session",
             {
+              method: "GET",
               cache: "no-store",
+              credentials: "include",
             }
           );
 
@@ -100,6 +105,10 @@ export default function AppLayout({
         if (cancelled) {
           return;
         }
+
+        /*
+          No valid server session.
+        */
 
         if (
           !response.ok ||
@@ -116,23 +125,80 @@ export default function AppLayout({
           return;
         }
 
+        const sessionUser =
+          data.user;
+
+        /*
+          Platform admins belong in the
+          platform administration area.
+
+          AppLayout is for company users.
+        */
+
+        if (
+          sessionUser.accountType ===
+            "PLATFORM_ADMIN" ||
+          sessionUser.isPlatformAdmin ===
+            true ||
+          sessionUser.role ===
+            "PlatformAdmin"
+        ) {
+          setUser(null);
+          setAuthLoaded(true);
+
+          router.replace(
+            "/admin"
+          );
+
+          return;
+        }
+
+        /*
+          Company users must have a company
+          and employee ID.
+        */
+
+        if (
+          sessionUser.companyId == null ||
+          sessionUser.employeeId == null
+        ) {
+          setUser(null);
+          setAuthLoaded(true);
+
+          router.replace(
+            "/login"
+          );
+
+          return;
+        }
+
         const officeUser =
-          data.user.role ===
+          sessionUser.role ===
             "Owner" ||
-          data.user.role ===
-            "Office" ||
-          data.user
-            .isPlatformAdmin ===
-            true;
+          sessionUser.role ===
+            "Office";
 
-        if (!officeUser) {
+        const employeePortalRoute =
+          pathname ===
+            "/employee-portal" ||
+          pathname.startsWith(
+            "/employee-portal/"
+          );
+
+        /*
+          Normal employees may only use the
+          employee portal.
+        */
+
+        if (
+          !officeUser &&
+          !employeePortalRoute
+        ) {
           setUser(
-            data.user
+            sessionUser
           );
 
-          setAuthLoaded(
-            true
-          );
+          setAuthLoaded(true);
 
           router.replace(
             "/employee-portal"
@@ -141,22 +207,46 @@ export default function AppLayout({
           return;
         }
 
+        /*
+          Owners and office users should use
+          the office/dashboard side.
+        */
+
+        if (
+          officeUser &&
+          employeePortalRoute
+        ) {
+          setUser(
+            sessionUser
+          );
+
+          setAuthLoaded(true);
+
+          router.replace(
+            "/"
+          );
+
+          return;
+        }
+
+        /*
+          Session and route are valid.
+        */
+
         setUser(
-          data.user
+          sessionUser
         );
 
-        setAuthLoaded(
-          true
-        );
+        setAuthLoaded(true);
       } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
         console.error(
           "Session load failed:",
           error
         );
-
-        if (cancelled) {
-          return;
-        }
 
         setUser(null);
         setAuthLoaded(true);
@@ -172,7 +262,16 @@ export default function AppLayout({
     return () => {
       cancelled = true;
     };
-  }, [router]);
+  }, [
+    pathname,
+    router,
+  ]);
+
+  /*
+    ========================================
+    THEME
+    ========================================
+  */
 
   useEffect(() => {
     applySavedTheme();
@@ -197,8 +296,7 @@ export default function AppLayout({
       event: Event
     ) {
       const customEvent =
-        event as
-          CustomEvent<CompanySettings>;
+        event as CustomEvent<CompanySettings>;
 
       applyTheme(
         customEvent.detail?.theme ??
@@ -229,11 +327,20 @@ export default function AppLayout({
     };
   }, []);
 
+  /*
+    Close mobile navigation whenever
+    the route changes.
+  */
+
   useEffect(() => {
     setMobileMenuOpen(
       false
     );
   }, [pathname]);
+
+  /*
+    Mobile menu behavior.
+  */
 
   useEffect(() => {
     if (!mobileMenuOpen) {
@@ -270,9 +377,13 @@ export default function AppLayout({
         handleEscape
       );
     };
-  }, [
-    mobileMenuOpen,
-  ]);
+  }, [mobileMenuOpen]);
+
+  /*
+    ========================================
+    LOADING
+    ========================================
+  */
 
   if (
     !authLoaded ||
@@ -287,6 +398,12 @@ export default function AppLayout({
     );
   }
 
+  /*
+    ========================================
+    APP
+    ========================================
+  */
+
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100">
       <Sidebar
@@ -297,6 +414,9 @@ export default function AppLayout({
           setMobileMenuOpen(
             false
           )
+        }
+        userName={
+          user.name
         }
       />
 
