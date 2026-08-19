@@ -33,6 +33,35 @@ type Employee = {
   updatedAt: string;
 };
 
+type SessionUser = {
+  accountType:
+    | "COMPANY_USER"
+    | "PLATFORM_ADMIN";
+
+  employeeId:
+    | number
+    | null;
+
+  companyId:
+    | number
+    | null;
+
+  name: string;
+
+  role:
+    | "Owner"
+    | "Office"
+    | "Employee"
+    | "PlatformAdmin";
+
+  isPlatformAdmin: boolean;
+};
+
+type SessionResponse = {
+  authenticated: boolean;
+  user: SessionUser | null;
+};
+
 function formatRole(
   role: EmployeeRole
 ) {
@@ -56,27 +85,79 @@ export default function EmployeeDetailPage() {
   const router = useRouter();
   const { showToast } = useToast();
 
-  const [employee, setEmployee] =
+  const [
+    employee,
+    setEmployee,
+  ] =
     useState<Employee | null>(
       null
     );
 
-  const [loading, setLoading] =
+  const [
+    loading,
+    setLoading,
+  ] =
     useState(true);
 
-  const [saving, setSaving] =
+  const [
+    savingProfile,
+    setSavingProfile,
+  ] =
     useState(false);
 
-  const [loginName, setLoginName] =
+  const [
+    savingLogin,
+    setSavingLogin,
+  ] =
+    useState(false);
+
+  const [
+    canEdit,
+    setCanEdit,
+  ] =
+    useState(false);
+
+  const [
+    firstName,
+    setFirstName,
+  ] =
     useState("");
 
-  const [password, setPassword] =
+  const [
+    lastName,
+    setLastName,
+  ] =
+    useState("");
+
+  const [
+    email,
+    setEmail,
+  ] =
+    useState("");
+
+  const [
+    phone,
+    setPhone,
+  ] =
+    useState("");
+
+  const [
+    loginName,
+    setLoginName,
+  ] =
+    useState("");
+
+  const [
+    password,
+    setPassword,
+  ] =
     useState("");
 
   const [
     confirmPassword,
     setConfirmPassword,
-  ] = useState("");
+  ] =
+    useState("");
 
   const employeeId =
     Array.isArray(params.id)
@@ -84,6 +165,8 @@ export default function EmployeeDetailPage() {
       : params.id;
 
   useEffect(() => {
+    let cancelled = false;
+
     async function loadEmployee() {
       if (!employeeId) {
         return;
@@ -92,40 +175,105 @@ export default function EmployeeDetailPage() {
       try {
         setLoading(true);
 
-        const response =
-          await fetch(
-            `/api/employees/${employeeId}`,
-            {
-              cache: "no-store",
-            }
-          );
+        const [
+          sessionResponse,
+          employeeResponse,
+        ] =
+          await Promise.all([
+            fetch(
+              "/api/session",
+              {
+                cache:
+                  "no-store",
+              }
+            ),
 
-        const data =
-          await response.json();
+            fetch(
+              `/api/employees/${employeeId}`,
+              {
+                cache:
+                  "no-store",
+              }
+            ),
+          ]);
 
-        if (!response.ok) {
+        const sessionData =
+          (await sessionResponse.json()) as
+            SessionResponse;
+
+        const employeeData =
+          await employeeResponse.json();
+
+        if (cancelled) {
+          return;
+        }
+
+        if (
+          !sessionResponse.ok ||
+          !sessionData.authenticated ||
+          !sessionData.user
+        ) {
           throw new Error(
-            data.error ||
+            "Unable to verify your session."
+          );
+        }
+
+        if (!employeeResponse.ok) {
+          throw new Error(
+            employeeData.error ||
               "Unable to load employee."
           );
         }
 
         const loadedEmployee =
-          data as Employee;
+          employeeData as Employee;
 
         setEmployee(
           loadedEmployee
+        );
+
+        setFirstName(
+          loadedEmployee.firstName
+        );
+
+        setLastName(
+          loadedEmployee.lastName
+        );
+
+        setEmail(
+          loadedEmployee.email ??
+            ""
+        );
+
+        setPhone(
+          loadedEmployee.phone ??
+            ""
         );
 
         setLoginName(
           loadedEmployee.loginName ??
             ""
         );
+
+        setCanEdit(
+          sessionData.user.accountType ===
+            "COMPANY_USER" &&
+            (
+              sessionData.user.role ===
+                "Owner" ||
+              sessionData.user.role ===
+                "Office"
+            )
+        );
       } catch (error) {
         console.error(
           "Employee load failed:",
           error
         );
+
+        if (cancelled) {
+          return;
+        }
 
         showToast(
           error instanceof Error
@@ -134,18 +282,150 @@ export default function EmployeeDetailPage() {
           "error"
         );
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
 
     void loadEmployee();
+
+    return () => {
+      cancelled = true;
+    };
   }, [
     employeeId,
     showToast,
   ]);
 
+  async function handleSaveProfile() {
+    if (
+      !employeeId ||
+      !canEdit
+    ) {
+      return;
+    }
+
+    const trimmedFirstName =
+      firstName.trim();
+
+    const trimmedLastName =
+      lastName.trim();
+
+    if (!trimmedFirstName) {
+      showToast(
+        "Please enter a first name.",
+        "error"
+      );
+
+      return;
+    }
+
+    if (!trimmedLastName) {
+      showToast(
+        "Please enter a last name.",
+        "error"
+      );
+
+      return;
+    }
+
+    try {
+      setSavingProfile(
+        true
+      );
+
+      const response =
+        await fetch(
+          `/api/employees/${employeeId}`,
+          {
+            method: "PATCH",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body:
+              JSON.stringify({
+                firstName:
+                  trimmedFirstName,
+
+                lastName:
+                  trimmedLastName,
+
+                email:
+                  email.trim(),
+
+                phone:
+                  phone.trim(),
+              }),
+          }
+        );
+
+      const data =
+        await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+            "Unable to update employee."
+        );
+      }
+
+      const updatedEmployee =
+        data as Employee;
+
+      setEmployee(
+        updatedEmployee
+      );
+
+      setFirstName(
+        updatedEmployee.firstName
+      );
+
+      setLastName(
+        updatedEmployee.lastName
+      );
+
+      setEmail(
+        updatedEmployee.email ??
+          ""
+      );
+
+      setPhone(
+        updatedEmployee.phone ??
+          ""
+      );
+
+      showToast(
+        "Employee information updated successfully.",
+        "success"
+      );
+    } catch (error) {
+      console.error(
+        "Employee profile update failed:",
+        error
+      );
+
+      showToast(
+        error instanceof Error
+          ? error.message
+          : "Unable to update employee.",
+        "error"
+      );
+    } finally {
+      setSavingProfile(
+        false
+      );
+    }
+  }
+
   async function handleSaveLogin() {
-    if (!employeeId) {
+    if (
+      !employeeId ||
+      !canEdit
+    ) {
       return;
     }
 
@@ -164,7 +444,8 @@ export default function EmployeeDetailPage() {
     }
 
     if (
-      trimmedLoginName.length < 3
+      trimmedLoginName.length <
+      3
     ) {
       showToast(
         "Login name must be at least 3 characters.",
@@ -183,7 +464,9 @@ export default function EmployeeDetailPage() {
       return;
     }
 
-    if (password.length < 8) {
+    if (
+      password.length < 8
+    ) {
       showToast(
         "Password must be at least 8 characters.",
         "error"
@@ -205,7 +488,9 @@ export default function EmployeeDetailPage() {
     }
 
     try {
-      setSaving(true);
+      setSavingLogin(
+        true
+      );
 
       const response =
         await fetch(
@@ -222,6 +507,7 @@ export default function EmployeeDetailPage() {
               JSON.stringify({
                 loginName:
                   trimmedLoginName,
+
                 password,
               }),
           }
@@ -269,7 +555,9 @@ export default function EmployeeDetailPage() {
         "error"
       );
     } finally {
-      setSaving(false);
+      setSavingLogin(
+        false
+      );
     }
   }
 
@@ -316,58 +604,105 @@ export default function EmployeeDetailPage() {
             </div>
 
             <section className="rounded-xl bg-white p-6 shadow dark:bg-slate-900">
-              <h2 className="mb-5 text-xl font-semibold">
-                Employee Information
-              </h2>
+              <div className="mb-5 flex items-center justify-between gap-4">
+                <h2 className="text-xl font-semibold">
+                  Employee Information
+                </h2>
+
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-medium dark:bg-slate-800">
+                  {formatRole(
+                    employee.role
+                  )}
+                </span>
+              </div>
 
               <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
                 <div>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    Name
-                  </p>
+                  <label className="mb-1 block text-sm font-medium">
+                    First Name
+                  </label>
 
-                  <p className="font-medium">
-                    {
-                      employee.firstName
-                    }{" "}
-                    {
-                      employee.lastName
+                  <input
+                    type="text"
+                    value={firstName}
+                    disabled={
+                      !canEdit ||
+                      savingProfile
                     }
-                  </p>
+                    onChange={(event) =>
+                      setFirstName(
+                        event.target
+                          .value
+                      )
+                    }
+                    className="w-full rounded-lg border border-slate-300 p-3 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:border-blue-500 dark:focus:ring-blue-950 dark:disabled:bg-slate-800"
+                  />
                 </div>
 
                 <div>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    Role
-                  </p>
+                  <label className="mb-1 block text-sm font-medium">
+                    Last Name
+                  </label>
 
-                  <p className="font-medium">
-                    {formatRole(
-                      employee.role
-                    )}
-                  </p>
+                  <input
+                    type="text"
+                    value={lastName}
+                    disabled={
+                      !canEdit ||
+                      savingProfile
+                    }
+                    onChange={(event) =>
+                      setLastName(
+                        event.target
+                          .value
+                      )
+                    }
+                    className="w-full rounded-lg border border-slate-300 p-3 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:border-blue-500 dark:focus:ring-blue-950 dark:disabled:bg-slate-800"
+                  />
                 </div>
 
                 <div>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                  <label className="mb-1 block text-sm font-medium">
                     Email
-                  </p>
+                  </label>
 
-                  <p className="font-medium">
-                    {employee.email ||
-                      "—"}
-                  </p>
+                  <input
+                    type="email"
+                    value={email}
+                    disabled={
+                      !canEdit ||
+                      savingProfile
+                    }
+                    onChange={(event) =>
+                      setEmail(
+                        event.target
+                          .value
+                      )
+                    }
+                    className="w-full rounded-lg border border-slate-300 p-3 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:border-blue-500 dark:focus:ring-blue-950 dark:disabled:bg-slate-800"
+                  />
                 </div>
 
                 <div>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                  <label className="mb-1 block text-sm font-medium">
                     Phone
-                  </p>
+                  </label>
 
-                  <p className="font-medium">
-                    {employee.phone ||
-                      "—"}
-                  </p>
+                  <input
+                    type="tel"
+                    value={phone}
+                    disabled={
+                      !canEdit ||
+                      savingProfile
+                    }
+                    onChange={(event) =>
+                      setPhone(
+                        event.target
+                          .value
+                      )
+                    }
+                    className="w-full rounded-lg border border-slate-300 p-3 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:border-blue-500 dark:focus:ring-blue-950 dark:disabled:bg-slate-800"
+                  />
                 </div>
 
                 <div>
@@ -375,13 +710,30 @@ export default function EmployeeDetailPage() {
                     Status
                   </p>
 
-                  <p className="font-medium">
+                  <p className="mt-2 font-medium">
                     {employee.active
                       ? "Active"
                       : "Inactive"}
                   </p>
                 </div>
               </div>
+
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    void handleSaveProfile()
+                  }
+                  disabled={
+                    savingProfile
+                  }
+                  className="mt-6 w-full rounded-lg bg-blue-600 px-4 py-3 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {savingProfile
+                    ? "Saving..."
+                    : "Save Employee Information"}
+                </button>
+              )}
             </section>
 
             <section className="rounded-xl bg-white p-6 shadow dark:bg-slate-900">
@@ -404,14 +756,17 @@ export default function EmployeeDetailPage() {
                   <input
                     type="text"
                     value={loginName}
-                    disabled={saving}
+                    disabled={
+                      !canEdit ||
+                      savingLogin
+                    }
                     onChange={(event) =>
                       setLoginName(
                         event.target
                           .value
                       )
                     }
-                    className="w-full rounded-lg border p-3"
+                    className="w-full rounded-lg border border-slate-300 p-3 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:border-blue-500 dark:focus:ring-blue-950 dark:disabled:bg-slate-800"
                     placeholder="Example: gio"
                     autoCapitalize="none"
                     autoCorrect="off"
@@ -433,16 +788,17 @@ export default function EmployeeDetailPage() {
                     <input
                       type="password"
                       value={password}
-                      disabled={saving}
-                      onChange={(
-                        event
-                      ) =>
+                      disabled={
+                        !canEdit ||
+                        savingLogin
+                      }
+                      onChange={(event) =>
                         setPassword(
                           event.target
                             .value
                         )
                       }
-                      className="w-full rounded-lg border p-3"
+                      className="w-full rounded-lg border border-slate-300 p-3 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:border-blue-500 dark:focus:ring-blue-950 dark:disabled:bg-slate-800"
                       placeholder="At least 8 characters"
                       autoComplete="new-password"
                     />
@@ -458,16 +814,17 @@ export default function EmployeeDetailPage() {
                       value={
                         confirmPassword
                       }
-                      disabled={saving}
-                      onChange={(
-                        event
-                      ) =>
+                      disabled={
+                        !canEdit ||
+                        savingLogin
+                      }
+                      onChange={(event) =>
                         setConfirmPassword(
                           event.target
                             .value
                         )
                       }
-                      className="w-full rounded-lg border p-3"
+                      className="w-full rounded-lg border border-slate-300 p-3 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:border-blue-500 dark:focus:ring-blue-950 dark:disabled:bg-slate-800"
                       placeholder="Enter password again"
                       autoComplete="new-password"
                     />
@@ -497,20 +854,24 @@ export default function EmployeeDetailPage() {
                   </p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    void handleSaveLogin()
-                  }
-                  disabled={saving}
-                  className="w-full rounded-lg bg-blue-600 px-4 py-3 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {saving
-                    ? "Saving..."
-                    : employee.loginName
-                      ? "Reset Login Password"
-                      : "Create Employee Login"}
-                </button>
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void handleSaveLogin()
+                    }
+                    disabled={
+                      savingLogin
+                    }
+                    className="w-full rounded-lg bg-blue-600 px-4 py-3 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {savingLogin
+                      ? "Saving..."
+                      : employee.loginName
+                        ? "Reset Login Password"
+                        : "Create Employee Login"}
+                  </button>
+                )}
               </div>
             </section>
           </>

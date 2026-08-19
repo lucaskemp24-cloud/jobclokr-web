@@ -227,40 +227,93 @@ export async function PATCH(
       );
     }
 
-    const body =
-      await request.json();
+    const existingEmployee =
+      await prisma.employee.findFirst({
+        where: {
+          id:
+            employeeId,
 
-    const loginName =
-      String(
-        body.loginName ?? ""
-      )
-        .trim()
-        .toLowerCase();
+          companyId:
+            session.companyId,
+        },
 
-    const password =
-      String(
-        body.password ?? ""
-      );
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          phone: true,
+          loginName: true,
+        },
+      });
 
-    if (!loginName) {
+    if (!existingEmployee) {
       return NextResponse.json(
         {
           error:
-            "A login name is required.",
+            "Employee not found.",
         },
         {
-          status: 400,
+          status: 404,
         }
       );
     }
 
+    const body =
+      await request.json();
+
+    const firstName =
+      typeof body.firstName ===
+      "string"
+        ? body.firstName.trim()
+        : undefined;
+
+    const lastName =
+      typeof body.lastName ===
+      "string"
+        ? body.lastName.trim()
+        : undefined;
+
+    const email =
+      typeof body.email ===
+      "string"
+        ? body.email.trim()
+        : undefined;
+
+    const phone =
+      typeof body.phone ===
+      "string"
+        ? body.phone.trim()
+        : undefined;
+
+    const loginName =
+      typeof body.loginName ===
+      "string"
+        ? body.loginName
+            .trim()
+            .toLowerCase()
+        : undefined;
+
+    const password =
+      typeof body.password ===
+      "string"
+        ? body.password
+        : undefined;
+
+    /*
+      ========================================
+      PROFILE UPDATE
+      ========================================
+    */
+
     if (
-      loginName.length < 3
+      firstName !== undefined &&
+      !firstName
     ) {
       return NextResponse.json(
         {
           error:
-            "Login name must be at least 3 characters.",
+            "First name is required.",
         },
         {
           status: 400,
@@ -269,6 +322,91 @@ export async function PATCH(
     }
 
     if (
+      lastName !== undefined &&
+      !lastName
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Last name is required.",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
+    /*
+      ========================================
+      LOGIN UPDATE
+      ========================================
+    */
+
+    if (
+      loginName !== undefined
+    ) {
+      if (!loginName) {
+        return NextResponse.json(
+          {
+            error:
+              "A login name is required.",
+          },
+          {
+            status: 400,
+          }
+        );
+      }
+
+      if (
+        loginName.length < 3
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Login name must be at least 3 characters.",
+          },
+          {
+            status: 400,
+          }
+        );
+      }
+
+      const existingLogin =
+        await prisma.employee.findFirst({
+          where: {
+            companyId:
+              session.companyId,
+
+            loginName,
+
+            NOT: {
+              id:
+                employeeId,
+            },
+          },
+
+          select: {
+            id: true,
+          },
+        });
+
+      if (
+        existingLogin
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "That login name is already being used.",
+          },
+          {
+            status: 409,
+          }
+        );
+      }
+    }
+
+    if (
+      password !== undefined &&
       password.length < 8
     ) {
       return NextResponse.json(
@@ -282,71 +420,79 @@ export async function PATCH(
       );
     }
 
-    const employee =
-      await prisma.employee.findFirst({
-        where: {
-          id:
-            employeeId,
-
-          companyId:
-            session.companyId,
-        },
-
-        select: {
-          id: true,
-        },
-      });
-
-    if (!employee) {
-      return NextResponse.json(
-        {
-          error:
-            "Employee not found.",
-        },
-        {
-          status: 404,
-        }
-      );
-    }
-
-    const existingLogin =
-      await prisma.employee.findFirst({
-        where: {
-          companyId:
-            session.companyId,
-
-          loginName,
-
-          NOT: {
-            id:
-              employeeId,
-          },
-        },
-
-        select: {
-          id: true,
-        },
-      });
+    const updateData: {
+      firstName?: string;
+      lastName?: string;
+      email?: string | null;
+      phone?: string | null;
+      loginName?: string;
+      passwordHash?: string;
+      mustChangePassword?: boolean;
+    } = {};
 
     if (
-      existingLogin
+      firstName !== undefined
+    ) {
+      updateData.firstName =
+        firstName;
+    }
+
+    if (
+      lastName !== undefined
+    ) {
+      updateData.lastName =
+        lastName;
+    }
+
+    if (
+      email !== undefined
+    ) {
+      updateData.email =
+        email || null;
+    }
+
+    if (
+      phone !== undefined
+    ) {
+      updateData.phone =
+        phone || null;
+    }
+
+    if (
+      loginName !== undefined
+    ) {
+      updateData.loginName =
+        loginName;
+    }
+
+    if (
+      password !== undefined
+    ) {
+      updateData.passwordHash =
+        await hash(
+          password,
+          12
+        );
+
+      updateData.mustChangePassword =
+        true;
+    }
+
+    if (
+      Object.keys(
+        updateData
+      ).length === 0
     ) {
       return NextResponse.json(
         {
           error:
-            "That login name is already being used.",
+            "No employee changes were provided.",
         },
         {
-          status: 409,
+          status: 400,
         }
       );
     }
-
-    const passwordHash =
-      await hash(
-        password,
-        12
-      );
 
     const updatedEmployee =
       await prisma.employee.update({
@@ -355,13 +501,8 @@ export async function PATCH(
             employeeId,
         },
 
-        data: {
-          loginName,
-          passwordHash,
-
-          mustChangePassword:
-            true,
-        },
+        data:
+          updateData,
 
         select:
           employeeSelect,
@@ -372,14 +513,14 @@ export async function PATCH(
     );
   } catch (error) {
     console.error(
-      "Failed to update employee login:",
+      "Failed to update employee:",
       error
     );
 
     return NextResponse.json(
       {
         error:
-          "Unable to update employee login.",
+          "Unable to update employee.",
       },
       {
         status: 500,

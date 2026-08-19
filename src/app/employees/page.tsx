@@ -8,10 +8,6 @@ import {
 
 import AppLayout from "@/components/layout/AppLayout";
 
-import {
-  loadAuthUser,
-} from "@/lib/auth";
-
 type DatabaseEmployee = {
   id: number;
   companyId: number;
@@ -34,6 +30,39 @@ type DatabaseEmployee = {
   updatedAt: string;
 };
 
+type SessionUser = {
+  accountType:
+    | "COMPANY_USER"
+    | "PLATFORM_ADMIN";
+
+  adminId:
+    | number
+    | null;
+
+  employeeId:
+    | number
+    | null;
+
+  companyId:
+    | number
+    | null;
+
+  name: string;
+
+  role:
+    | "Owner"
+    | "Office"
+    | "Employee"
+    | "PlatformAdmin";
+
+  isPlatformAdmin: boolean;
+};
+
+type SessionResponse = {
+  authenticated: boolean;
+  user: SessionUser | null;
+};
+
 export default function EmployeesPage() {
   const [
     employees,
@@ -53,66 +82,100 @@ export default function EmployeesPage() {
   ] = useState("");
 
   const [
-    canAddEmployees,
-    setCanAddEmployees,
+    canEditEmployees,
+    setCanEditEmployees,
   ] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
+
     async function loadEmployees() {
       try {
         setLoading(true);
         setLoadError("");
 
-        const response =
-          await fetch(
+        const [
+          sessionResponse,
+          employeesResponse,
+        ] = await Promise.all([
+          fetch(
+            "/api/session",
+            {
+              cache:
+                "no-store",
+            }
+          ),
+
+          fetch(
             "/api/employees",
             {
               cache:
                 "no-store",
             }
-          );
+          ),
+        ]);
 
-        if (!response.ok) {
+        if (
+          !sessionResponse.ok
+        ) {
+          throw new Error(
+            "Unable to verify your session."
+          );
+        }
+
+        if (
+          !employeesResponse.ok
+        ) {
           throw new Error(
             "Unable to load employees."
           );
         }
 
-        const data =
-          await response.json();
+        const sessionData =
+          (await sessionResponse.json()) as
+            SessionResponse;
+
+        const employeeData =
+          await employeesResponse.json();
+
+        if (cancelled) {
+          return;
+        }
+
+        if (
+          !sessionData.authenticated ||
+          !sessionData.user
+        ) {
+          throw new Error(
+            "Unable to verify your session."
+          );
+        }
 
         const loadedEmployees:
           DatabaseEmployee[] =
-          Array.isArray(data)
-            ? data
+          Array.isArray(
+            employeeData
+          )
+            ? employeeData
             : [];
 
         setEmployees(
           loadedEmployees
         );
 
-        const authUser =
-          loadAuthUser();
+        /*
+          Owners may edit existing
+          employee accounts.
 
-        if (!authUser) {
-          setCanAddEmployees(
-            false
-          );
+          They cannot add new employee
+          accounts from the company side.
+        */
 
-          return;
-        }
-
-        const currentEmployee =
-          loadedEmployees.find(
-            (employee) =>
-              employee.id ===
-              authUser.employeeId
-          );
-
-        setCanAddEmployees(
-          currentEmployee
-            ?.isPlatformAdmin ===
-            true
+        setCanEditEmployees(
+          sessionData.user.accountType ===
+            "COMPANY_USER" &&
+            sessionData.user.role ===
+              "Owner"
         );
       } catch (error) {
         console.error(
@@ -120,19 +183,31 @@ export default function EmployeesPage() {
           error
         );
 
+        if (cancelled) {
+          return;
+        }
+
         setLoadError(
-          "Unable to load employees."
+          error instanceof Error
+            ? error.message
+            : "Unable to load employees."
         );
 
-        setCanAddEmployees(
+        setCanEditEmployees(
           false
         );
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
 
     void loadEmployees();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (
@@ -149,15 +224,6 @@ export default function EmployeesPage() {
               and account status.
             </p>
           </div>
-
-          {canAddEmployees && (
-            <Link
-              href="/employees/new"
-              className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-5 py-3 font-medium text-white hover:bg-blue-700"
-            >
-              + New Employee
-            </Link>
-          )}
         </div>
 
         <div className="overflow-hidden rounded-xl bg-white shadow dark:bg-slate-900">
@@ -210,15 +276,15 @@ export default function EmployeesPage() {
                       {loadError}
                     </td>
                   </tr>
-                ) : employees.length === 0 ? (
+                ) : employees.length ===
+                  0 ? (
                   <tr>
                     <td
                       colSpan={6}
                       className="p-8 text-center text-slate-500 dark:text-slate-400"
                     >
-                      {canAddEmployees
-                        ? 'No employees yet. Click "+ New Employee" to add the first employee.'
-                        : "No employees are available."}
+                      No employees are
+                      available.
                     </td>
                   </tr>
                 ) : (
@@ -279,9 +345,11 @@ export default function EmployeesPage() {
                         <td className="p-4">
                           <Link
                             href={`/employees/${employee.id}`}
-                            className="text-blue-600 hover:underline"
+                            className="font-medium text-blue-600 hover:underline"
                           >
-                            View
+                            {canEditEmployees
+                              ? "Edit"
+                              : "View"}
                           </Link>
                         </td>
                       </tr>
@@ -293,12 +361,13 @@ export default function EmployeesPage() {
           </div>
         </div>
 
-        {!loading &&
-          !canAddEmployees && (
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              New employee accounts are created by JobClokr administration.
-            </p>
-          )}
+        {!loading && (
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            {canEditEmployees
+              ? "Owners can edit existing employee information. New employee accounts are created by JobClokr administration."
+              : "New employee accounts are created by JobClokr administration."}
+          </p>
+        )}
       </div>
     </AppLayout>
   );
