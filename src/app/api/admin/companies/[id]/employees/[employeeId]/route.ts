@@ -514,3 +514,240 @@ export async function PATCH(
     );
   }
 }
+
+export async function DELETE(
+  request: Request,
+  context: RouteContext
+) {
+  try {
+    const session =
+      await getAdminSession();
+
+    if (!session) {
+      return NextResponse.json(
+        {
+          error:
+            "Platform administrator access required.",
+        },
+        {
+          status: 403,
+        }
+      );
+    }
+
+    const {
+      id,
+      employeeId,
+    } =
+      await context.params;
+
+    const companyId =
+      parsePositiveInteger(
+        id
+      );
+
+    const parsedEmployeeId =
+      parsePositiveInteger(
+        employeeId
+      );
+
+    if (!companyId) {
+      return NextResponse.json(
+        {
+          error:
+            "Invalid company ID.",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
+    if (!parsedEmployeeId) {
+      return NextResponse.json(
+        {
+          error:
+            "Invalid employee ID.",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
+    const employee =
+      await prisma.employee.findFirst({
+        where: {
+          id:
+            parsedEmployeeId,
+
+          companyId,
+        },
+
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          role: true,
+          active: true,
+
+          _count: {
+            select: {
+              timeEntries:
+                true,
+
+              materials:
+                true,
+
+              dailyNotes:
+                true,
+
+              photos:
+                true,
+
+              documents:
+                true,
+            },
+          },
+        },
+      });
+
+    if (!employee) {
+      return NextResponse.json(
+        {
+          error:
+            "Employee not found.",
+        },
+        {
+          status: 404,
+        }
+      );
+    }
+
+    /*
+      Do not allow deletion of the
+      company's only active Owner.
+    */
+
+    if (
+      employee.role ===
+        "OWNER" &&
+      employee.active
+    ) {
+      const otherActiveOwners =
+        await prisma.employee.count({
+          where: {
+            companyId,
+
+            role:
+              "OWNER",
+
+            active:
+              true,
+
+            NOT: {
+              id:
+                employee.id,
+            },
+          },
+        });
+
+      if (
+        otherActiveOwners === 0
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "This employee is the company's only active Owner. Add or promote another Owner before deleting this account.",
+          },
+          {
+            status: 409,
+          }
+        );
+      }
+    }
+
+    /*
+      Preserve historical job records.
+
+      If the employee has worked jobs or
+      created historical records, keep the
+      employee and mark them inactive instead.
+    */
+
+    const historicalRecordCount =
+      employee._count.timeEntries +
+      employee._count.materials +
+      employee._count.dailyNotes +
+      employee._count.photos +
+      employee._count.documents;
+
+    if (
+      historicalRecordCount > 0
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "This employee has job history and cannot be permanently deleted. Set the employee to Inactive instead.",
+        },
+        {
+          status: 409,
+        }
+      );
+    }
+
+    await prisma.employee.delete({
+      where: {
+        id:
+          employee.id,
+      },
+    });
+
+    console.log(
+      "[PLATFORM ADMIN] Employee deleted.",
+      {
+        adminId:
+          session.adminId,
+
+        companyId,
+
+        employeeId:
+          employee.id,
+
+        employeeName:
+          `${employee.firstName} ${employee.lastName}`.trim(),
+      }
+    );
+
+    return NextResponse.json({
+      success:
+        true,
+
+      deletedEmployee: {
+        id:
+          employee.id,
+
+        firstName:
+          employee.firstName,
+
+        lastName:
+          employee.lastName,
+      },
+    });
+  } catch (error) {
+    console.error(
+      "Failed to delete admin employee:",
+      error
+    );
+
+    return NextResponse.json(
+      {
+        error:
+          "Unable to delete employee.",
+      },
+      {
+        status: 500,
+      }
+    );
+  }
+}

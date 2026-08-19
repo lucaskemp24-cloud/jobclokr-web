@@ -452,6 +452,26 @@ export default function AdminCompanyPage() {
     useState("");
 
   const [
+    employeeToDelete,
+    setEmployeeToDelete,
+  ] =
+    useState<CompanyEmployee | null>(
+      null
+    );
+
+  const [
+    deletingEmployee,
+    setDeletingEmployee,
+  ] =
+    useState(false);
+
+  const [
+    deleteEmployeeError,
+    setDeleteEmployeeError,
+  ] =
+    useState("");
+
+  const [
     showEditCompanyForm,
     setShowEditCompanyForm,
   ] =
@@ -1242,6 +1262,139 @@ export default function AdminCompanyPage() {
       );
     } finally {
       setSavingEditEmployee(
+        false
+      );
+    }
+  }
+
+  function openDeleteEmployeeForm(
+    employee: CompanyEmployee
+  ) {
+    setEmployeeToDelete(
+      employee
+    );
+
+    setDeleteEmployeeError(
+      ""
+    );
+
+    setEmployeeMessage(
+      ""
+    );
+  }
+
+  function closeDeleteEmployeeForm() {
+    if (deletingEmployee) {
+      return;
+    }
+
+    setEmployeeToDelete(
+      null
+    );
+
+    setDeleteEmployeeError(
+      ""
+    );
+  }
+
+  async function deleteEmployee() {
+    if (
+      !company ||
+      !employeeToDelete
+    ) {
+      return;
+    }
+
+    try {
+      setDeletingEmployee(
+        true
+      );
+
+      setDeleteEmployeeError(
+        ""
+      );
+
+      setEmployeeMessage(
+        ""
+      );
+
+      const response =
+        await fetch(
+          `/api/admin/companies/${company.id}/employees/${employeeToDelete.id}`,
+          {
+            method:
+              "DELETE",
+          }
+        );
+
+      const data =
+        await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          typeof data?.error ===
+            "string"
+            ? data.error
+            : "Unable to delete employee."
+        );
+      }
+
+      const deletedEmployee =
+        employeeToDelete;
+
+      setCompany(
+        (
+          currentCompany
+        ) => {
+          if (
+            !currentCompany
+          ) {
+            return currentCompany;
+          }
+
+          return {
+            ...currentCompany,
+
+            employees:
+              currentCompany.employees.filter(
+                (employee) =>
+                  employee.id !==
+                    deletedEmployee.id
+              ),
+
+            counts: {
+              ...currentCompany.counts,
+
+              employees:
+                Math.max(
+                  0,
+                  currentCompany.counts.employees - 1
+                ),
+            },
+          };
+        }
+      );
+
+      setEmployeeMessage(
+        `${deletedEmployee.firstName} ${deletedEmployee.lastName} was deleted successfully.`
+      );
+
+      setEmployeeToDelete(
+        null
+      );
+    } catch (deleteError) {
+      console.error(
+        "Employee deletion failed:",
+        deleteError
+      );
+
+      setDeleteEmployeeError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Unable to delete employee."
+      );
+    } finally {
+      setDeletingEmployee(
         false
       );
     }
@@ -2308,17 +2461,31 @@ export default function AdminCompanyPage() {
                           </td>
 
                           <td className="p-4">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                openEditEmployeeForm(
-                                  employee
-                                )
-                              }
-                              className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white transition hover:bg-blue-700"
-                            >
-                              Manage
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openEditEmployeeForm(
+                                    employee
+                                  )
+                                }
+                                className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white transition hover:bg-blue-700"
+                              >
+                                Manage
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openDeleteEmployeeForm(
+                                    employee
+                                  )
+                                }
+                                className="rounded-lg bg-red-600 px-4 py-2 font-semibold text-white transition hover:bg-red-700"
+                              >
+                                Delete
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       )
@@ -3460,6 +3627,72 @@ export default function AdminCompanyPage() {
                   {savingEditEmployee
                     ? "Saving Changes..."
                     : "Save Changes"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {employeeToDelete ? (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl dark:bg-slate-900">
+            <div className="border-b border-red-200 p-6 dark:border-red-900">
+              <h2 className="text-2xl font-bold text-red-700 dark:text-red-400">
+                Delete Employee
+              </h2>
+
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                Permanently remove this employee from{" "}
+                {company.name}.
+              </p>
+            </div>
+
+            <div className="space-y-5 p-6">
+              <div className="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950/30">
+                <p className="font-semibold text-red-800 dark:text-red-200">
+                  {employeeToDelete.firstName}{" "}
+                  {employeeToDelete.lastName}
+                </p>
+
+                <p className="mt-2 text-sm text-red-700 dark:text-red-300">
+                  This action cannot be undone.
+                </p>
+              </div>
+
+              <p className="text-sm text-slate-600 dark:text-slate-400">
+                Employees with job history cannot be
+                permanently deleted. JobClokr will ask
+                you to mark them Inactive instead.
+              </p>
+
+              {deleteEmployeeError ? (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+                  {deleteEmployeeError}
+                </div>
+              ) : null}
+
+              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={closeDeleteEmployeeForm}
+                  disabled={deletingEmployee}
+                  className="rounded-lg border border-slate-300 px-5 py-3 font-semibold transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:hover:bg-slate-800"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    void deleteEmployee()
+                  }
+                  disabled={deletingEmployee}
+                  className="rounded-lg bg-red-600 px-5 py-3 font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {deletingEmployee
+                    ? "Deleting..."
+                    : "Delete Employee"}
                 </button>
               </div>
             </div>
