@@ -677,59 +677,45 @@ function EmployeeJobPhotosContent() {
 
   async function handleChoosePhotos() {
     try {
-      const result =
-        await Camera.pickImages({
+      const photo =
+        await Camera.getPhoto({
           quality: 85,
-          limit: 10,
+          allowEditing: false,
+          resultType:
+            CameraResultType.DataUrl,
+          source:
+            CameraSource.Photos,
+          correctOrientation: true,
         });
 
-      if (
-        !result.photos ||
-        result.photos.length === 0
-      ) {
-        return;
-      }
-
-      const selectedFiles: File[] =
-        [];
-
-      for (
-        let index = 0;
-        index < result.photos.length;
-        index++
-      ) {
-        const photo =
-          result.photos[index];
-
-        const response =
-          await fetch(
-            photo.webPath
-          );
-
-        if (!response.ok) {
-          throw new Error(
-            "A selected photo could not be loaded."
-          );
-        }
-
-        const blob =
-          await response.blob();
-
-        selectedFiles.push(
-          new File(
-            [blob],
-            `job-photo-${Date.now()}-${index}.${photo.format || "jpeg"}`,
-            {
-              type:
-                blob.type ||
-                `image/${photo.format || "jpeg"}`,
-            }
-          )
+      if (!photo.dataUrl) {
+        throw new Error(
+          "The selected photo could not be loaded."
         );
       }
 
-      await processSelectedFiles(
-        selectedFiles
+      const timestamp =
+        Date.now();
+
+      const newPhoto: PendingPhoto = {
+        id: timestamp,
+        imageData:
+          photo.dataUrl,
+        fileName:
+          `job-photo-${timestamp}.${photo.format || "jpeg"}`,
+        note: "",
+      };
+
+      setPendingPhotos(
+        (currentPhotos) => [
+          ...currentPhotos,
+          newPhoto,
+        ]
+      );
+
+      showToast(
+        "Photo ready to save.",
+        "success"
       );
     } catch (error) {
       const message =
@@ -746,12 +732,12 @@ function EmployeeJobPhotosContent() {
       }
 
       console.error(
-        "Choose photos failed:",
+        "Choose photo failed:",
         error
       );
 
       showToast(
-        "Unable to choose photos.",
+        "Unable to choose photo.",
         "error"
       );
     }
