@@ -17,11 +17,6 @@ import EmployeeLayout from "@/components/layout/EmployeeLayout";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/ToastProvider";
 
-import {
-  loadAuthUser,
-  type AuthUser,
-} from "@/lib/auth";
-
 type ProjectDocument = {
   id: number;
   projectId: number;
@@ -40,6 +35,35 @@ type ScheduleAssignment = {
   projectId: number;
   projectName: string;
   employeeIds: number[];
+};
+
+type SessionUser = {
+  accountType:
+    | "PLATFORM_ADMIN"
+    | "COMPANY_USER";
+  adminId: number | null;
+  employeeId: number | null;
+  companyId: number | null;
+  name: string;
+  role:
+    | "PlatformAdmin"
+    | "Owner"
+    | "Office"
+    | "Employee";
+  isPlatformAdmin: boolean;
+};
+
+type SessionResponse = {
+  authenticated: boolean;
+  user: SessionUser | null;
+};
+
+type EmployeeSessionUser = {
+  employeeId: number;
+  companyId: number;
+  name: string;
+  role: "Employee";
+  isPlatformAdmin: false;
 };
 
 const MAX_FILE_SIZE =
@@ -183,7 +207,7 @@ function EmployeeDocumentsContent() {
     authUser,
     setAuthUser,
   ] =
-    useState<AuthUser | null>(
+    useState<EmployeeSessionUser | null>(
       null
     );
 
@@ -218,10 +242,10 @@ function EmployeeDocumentsContent() {
     useState("");
 
   const [
-    loading,
-    setLoading,
+    dataLoaded,
+    setDataLoaded,
   ] =
-    useState(true);
+    useState(false);
 
   const [
     saving,
@@ -246,26 +270,6 @@ function EmployeeDocumentsContent() {
 
   useEffect(() => {
     async function loadPage() {
-      const savedUser =
-        loadAuthUser();
-
-      if (!savedUser) {
-        router.replace(
-          "/login"
-        );
-        return;
-      }
-
-      if (
-        savedUser.role ===
-          "Owner" ||
-        savedUser.role ===
-          "Office"
-      ) {
-        router.replace("/");
-        return;
-      }
-
       if (
         !Number.isInteger(
           projectId
@@ -280,12 +284,78 @@ function EmployeeDocumentsContent() {
         router.replace(
           "/employee-portal"
         );
+
         return;
       }
 
       try {
-        setLoading(true);
-        setAuthUser(savedUser);
+        setDataLoaded(false);
+
+        const sessionResponse =
+          await fetch(
+            "/api/session",
+            {
+              cache:
+                "no-store",
+            }
+          );
+
+        const sessionData =
+          (await sessionResponse.json()) as
+            SessionResponse;
+
+        if (
+          !sessionResponse.ok ||
+          !sessionData.authenticated ||
+          !sessionData.user
+        ) {
+          router.replace(
+            "/login"
+          );
+
+          return;
+        }
+
+        if (
+          sessionData.user.accountType ===
+          "PLATFORM_ADMIN"
+        ) {
+          router.replace(
+            "/admin"
+          );
+
+          return;
+        }
+
+        if (
+          sessionData.user.role !==
+            "Employee" ||
+          sessionData.user.employeeId ===
+            null ||
+          sessionData.user.companyId ===
+            null
+        ) {
+          router.replace("/");
+
+          return;
+        }
+
+        const currentUser: EmployeeSessionUser = {
+          employeeId:
+            sessionData.user.employeeId,
+          companyId:
+            sessionData.user.companyId,
+          name:
+            sessionData.user.name,
+          role:
+            "Employee",
+          isPlatformAdmin:
+            false,
+        };
+
+        setAuthUser(
+          currentUser
+        );
 
         const [
           scheduleResponse,
@@ -293,7 +363,7 @@ function EmployeeDocumentsContent() {
         ] =
           await Promise.all([
             fetch(
-              `/api/schedule?employeeId=${savedUser.employeeId}`,
+              `/api/schedule?employeeId=${currentUser.employeeId}`,
               {
                 cache:
                   "no-store",
@@ -314,14 +384,18 @@ function EmployeeDocumentsContent() {
         const documentsData =
           await documentsResponse.json();
 
-        if (!scheduleResponse.ok) {
+        if (
+          !scheduleResponse.ok
+        ) {
           throw new Error(
             scheduleData.error ||
               "Unable to load schedule."
           );
         }
 
-        if (!documentsResponse.ok) {
+        if (
+          !documentsResponse.ok
+        ) {
           throw new Error(
             documentsData.error ||
               "Unable to load documents."
@@ -342,7 +416,7 @@ function EmployeeDocumentsContent() {
               savedAssignment.projectId ===
                 projectId &&
               savedAssignment.employeeIds.includes(
-                savedUser.employeeId
+                currentUser.employeeId
               )
           );
 
@@ -366,6 +440,11 @@ function EmployeeDocumentsContent() {
             : []
         );
       } catch (error) {
+        console.error(
+          "Employee documents load failed:",
+          error
+        );
+
         showToast(
           error instanceof Error
             ? error.message
@@ -373,7 +452,9 @@ function EmployeeDocumentsContent() {
           "error"
         );
       } finally {
-        setLoading(false);
+        setDataLoaded(
+          true
+        );
       }
     }
 
@@ -420,6 +501,7 @@ function EmployeeDocumentsContent() {
         "Files must be 5 MB or smaller for now.",
         "error"
       );
+
       return;
     }
 
@@ -433,6 +515,7 @@ function EmployeeDocumentsContent() {
         "That file type is not supported yet.",
         "error"
       );
+
       return;
     }
 
@@ -451,6 +534,7 @@ function EmployeeDocumentsContent() {
         "Choose a document first.",
         "error"
       );
+
       return;
     }
 
@@ -466,7 +550,8 @@ function EmployeeDocumentsContent() {
         await fetch(
           "/api/project-documents",
           {
-            method: "POST",
+            method:
+              "POST",
             headers: {
               "Content-Type":
                 "application/json",
@@ -491,7 +576,9 @@ function EmployeeDocumentsContent() {
       const data =
         await response.json();
 
-      if (!response.ok) {
+      if (
+        !response.ok
+      ) {
         throw new Error(
           data.error ||
             "Unable to upload document."
@@ -510,6 +597,7 @@ function EmployeeDocumentsContent() {
       setSelectedFile(
         null
       );
+
       setNote("");
 
       showToast(
@@ -549,7 +637,9 @@ function EmployeeDocumentsContent() {
       const data =
         await response.json();
 
-      if (!response.ok) {
+      if (
+        !response.ok
+      ) {
         throw new Error(
           data.error ||
             "Unable to delete document."
@@ -595,7 +685,9 @@ function EmployeeDocumentsContent() {
         "noopener,noreferrer"
       );
 
-    if (!documentWindow) {
+    if (
+      !documentWindow
+    ) {
       showToast(
         "Your browser blocked the document window.",
         "warning"
@@ -604,7 +696,7 @@ function EmployeeDocumentsContent() {
   }
 
   if (
-    loading ||
+    !dataLoaded ||
     !authUser ||
     !assignment
   ) {
@@ -694,7 +786,9 @@ function EmployeeDocumentsContent() {
               </p>
 
               <textarea
-                value={note}
+                value={
+                  note
+                }
                 onChange={(
                   event
                 ) =>
