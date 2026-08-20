@@ -14,10 +14,23 @@ import {
 import EmployeeLayout from "@/components/layout/EmployeeLayout";
 import { useToast } from "@/components/ui/ToastProvider";
 
-import {
-  loadAuthUser,
-  type AuthUser,
-} from "@/lib/auth";
+type SessionUser = {
+  accountType: "COMPANY_USER";
+  adminId: null;
+  employeeId: number;
+  companyId: number;
+  name: string;
+  role:
+    | "Owner"
+    | "Office"
+    | "Employee";
+  isPlatformAdmin: false;
+};
+
+type SessionResponse = {
+  authenticated: boolean;
+  user: SessionUser | null;
+};
 
 type JobMaterial = {
   id: number;
@@ -82,7 +95,7 @@ function EmployeeMaterialsContent() {
     authUser,
     setAuthUser,
   ] =
-    useState<AuthUser | null>(
+    useState<SessionUser | null>(
       null
     );
 
@@ -147,26 +160,6 @@ function EmployeeMaterialsContent() {
 
   useEffect(() => {
     async function loadPage() {
-      const savedUser =
-        loadAuthUser();
-
-      if (!savedUser) {
-        router.replace(
-          "/login"
-        );
-        return;
-      }
-
-      if (
-        savedUser.role ===
-          "Owner" ||
-        savedUser.role ===
-          "Office"
-      ) {
-        router.replace("/");
-        return;
-      }
-
       if (
         !Number.isInteger(
           projectId
@@ -186,7 +179,46 @@ function EmployeeMaterialsContent() {
 
       try {
         setLoading(true);
-        setAuthUser(savedUser);
+
+        const sessionResponse =
+          await fetch(
+            "/api/session",
+            {
+              cache: "no-store",
+            }
+          );
+
+        const sessionData =
+          (await sessionResponse.json()) as
+            SessionResponse;
+
+        if (
+          !sessionResponse.ok ||
+          !sessionData.authenticated ||
+          !sessionData.user
+        ) {
+          router.replace(
+            "/login"
+          );
+          return;
+        }
+
+        const sessionUser =
+          sessionData.user;
+
+        if (
+          sessionUser.role ===
+            "Owner" ||
+          sessionUser.role ===
+            "Office"
+        ) {
+          router.replace("/");
+          return;
+        }
+
+        setAuthUser(
+          sessionUser
+        );
 
         const [
           scheduleResponse,
@@ -194,7 +226,7 @@ function EmployeeMaterialsContent() {
         ] =
           await Promise.all([
             fetch(
-              `/api/schedule?employeeId=${savedUser.employeeId}`,
+              `/api/schedule?employeeId=${sessionUser.employeeId}`,
               {
                 cache:
                   "no-store",
@@ -245,9 +277,9 @@ function EmployeeMaterialsContent() {
               savedAssignment: ScheduleAssignment
             ) =>
               savedAssignment.projectId ===
-              projectId &&
+                projectId &&
               savedAssignment.employeeIds.includes(
-                savedUser.employeeId
+                sessionUser.employeeId
               )
           );
 
