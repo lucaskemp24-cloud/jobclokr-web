@@ -1,4 +1,8 @@
-import type { Metadata } from "next";
+import type {
+  Metadata,
+  Viewport,
+} from "next";
+
 import {
   Geist,
   Geist_Mono,
@@ -22,6 +26,12 @@ export const metadata: Metadata = {
   title: "JobClokr",
   description:
     "Time Tracking for Trade Businesses",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
