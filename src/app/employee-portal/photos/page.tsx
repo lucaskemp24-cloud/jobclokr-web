@@ -1,1250 +1,666 @@
 "use client";
 
-import {
-  ChangeEvent,
-  Suspense,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import {
-  useRouter,
-  useSearchParams,
-} from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import AppLayout from "@/components/layout/AppLayout";
+import type { Project } from "@/lib/projects";
 
-import {
-  Camera,
-  CameraResultType,
-  CameraSource,
-} from "@capacitor/camera";
-
-import EmployeeLayout from "@/components/layout/EmployeeLayout";
-import ConfirmDialog from "@/components/ui/ConfirmDialog";
-import { useToast } from "@/components/ui/ToastProvider";
-
-import {
-  loadAuthUser,
-  type AuthUser,
-} from "@/lib/auth";
-
-type JobPhoto = {
+type DatabaseEmployee = {
   id: number;
-  projectId: number;
-  projectName: string;
+  companyId: number;
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  phone: string | null;
+  role:
+    | "OWNER"
+    | "OFFICE"
+    | "FOREMAN"
+    | "EMPLOYEE";
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type TimeEntry = {
+  id: number;
   employeeId: number;
   employeeName: string;
-  imageData: string;
-  imageUrl: string;
-  fileName: string;
-  note: string;
-  createdAt: string;
-};
-
-type ScheduleAssignment = {
-  id: number;
-  date: string;
   projectId: number;
   projectName: string;
-  customerName: string;
-  address: string;
-  status: string;
-  employeeIds: number[];
+  clockIn: string;
+  clockOut: string | null;
 };
 
-type PendingPhoto = {
-  id: number;
-  imageData: string;
-  fileName: string;
-  note: string;
-};
+function getEmployeeName(
+  employee: DatabaseEmployee
+) {
+  return `${employee.firstName} ${employee.lastName}`.trim();
+}
 
-const MAXIMUM_SOURCE_FILE_SIZE =
-  10 * 1024 * 1024;
+function calculateHours(
+  clockIn: string,
+  clockOut: string | null
+) {
+  const startTime =
+    new Date(clockIn);
 
-function formatPhotoDate(
+  const endTime = clockOut
+    ? new Date(clockOut)
+    : new Date();
+
+  const milliseconds =
+    endTime.getTime() -
+    startTime.getTime();
+
+  return Math.max(
+    milliseconds /
+      1000 /
+      60 /
+      60,
+    0
+  );
+}
+
+function formatTime(
   dateValue: string
 ) {
-  const date =
-    new Date(dateValue);
-
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
-    return "Date unavailable";
-  }
-
-  return date.toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-function loadImage(
-  source: string
-) {
-  return new Promise<HTMLImageElement>(
-    (resolve, reject) => {
-      const image =
-        new Image();
-
-      image.onload = () =>
-        resolve(image);
-
-      image.onerror = () =>
-        reject(
-          new Error(
-            "The selected photo could not be processed."
-          )
-        );
-
-      image.src = source;
+  return new Date(
+    dateValue
+  ).toLocaleTimeString(
+    [],
+    {
+      hour: "numeric",
+      minute: "2-digit",
     }
   );
 }
 
-function readFileAsDataUrl(
-  file: File
-) {
-  return new Promise<string>(
-    (resolve, reject) => {
-      const reader =
-        new FileReader();
-
-      reader.onload = () => {
-        if (
-          typeof reader.result ===
-          "string"
-        ) {
-          resolve(
-            reader.result
-          );
-        } else {
-          reject(
-            new Error(
-              "The selected photo could not be read."
-            )
-          );
-        }
-      };
-
-      reader.onerror = () => {
-        reject(
-          new Error(
-            "The selected photo could not be read."
-          )
-        );
-      };
-
-      reader.readAsDataURL(
-        file
-      );
-    }
-  );
-}
-
-async function compressImage(
-  file: File
-) {
-  const originalDataUrl =
-    await readFileAsDataUrl(
-      file
-    );
-
-  const image =
-    await loadImage(
-      originalDataUrl
-    );
-
-  const maximumDimension =
-    1600;
-
-  const scale =
-    Math.min(
-      1,
-      maximumDimension /
-        Math.max(
-          image.width,
-          image.height
-        )
-    );
-
-  const width =
-    Math.max(
-      1,
-      Math.round(
-        image.width *
-          scale
-      )
-    );
-
-  const height =
-    Math.max(
-      1,
-      Math.round(
-        image.height *
-          scale
-      )
-    );
-
-  const canvas =
-    document.createElement(
-      "canvas"
-    );
-
-  canvas.width = width;
-  canvas.height = height;
-
-  const context =
-    canvas.getContext(
-      "2d"
-    );
-
-  if (!context) {
-    throw new Error(
-      "The selected photo could not be processed."
-    );
-  }
-
-  context.drawImage(
-    image,
-    0,
-    0,
-    width,
-    height
-  );
-
-  return canvas.toDataURL(
-    "image/jpeg",
-    0.82
-  );
-}
-
-function EmployeeJobPhotosContent() {
-  const router =
-    useRouter();
-
-  const searchParams =
-    useSearchParams();
-
-  const { showToast } =
-    useToast();
-
-  const libraryInputRef =
-    useRef<HTMLInputElement | null>(
-      null
-    );
+export default function DashboardPage() {
+  const [
+    projects,
+    setProjects,
+  ] = useState<Project[]>([]);
 
   const [
-    authUser,
-    setAuthUser,
-  ] =
-    useState<AuthUser | null>(
-      null
-    );
+    employees,
+    setEmployees,
+  ] = useState<
+    DatabaseEmployee[]
+  >([]);
 
   const [
-    assignment,
-    setAssignment,
-  ] =
-    useState<ScheduleAssignment | null>(
-      null
-    );
+    entries,
+    setEntries,
+  ] = useState<TimeEntry[]>([]);
 
   const [
-    photos,
-    setPhotos,
-  ] =
-    useState<JobPhoto[]>(
-      []
-    );
+    currentTime,
+    setCurrentTime,
+  ] = useState(Date.now());
 
-  const [
-    pendingPhotos,
-    setPendingPhotos,
-  ] =
-    useState<PendingPhoto[]>(
-      []
-    );
-
-  const [
-    dataLoaded,
-    setDataLoaded,
-  ] =
-    useState(false);
-
-  const [
-    savingPhotos,
-    setSavingPhotos,
-  ] =
-    useState(false);
-
-  const [
-    photoToDelete,
-    setPhotoToDelete,
-  ] =
-    useState<JobPhoto | null>(
-      null
-    );
-
-  const projectId =
-    Number(
-      searchParams.get(
-        "projectId"
-      )
-    );
-
-  useEffect(() => {
-    async function loadPage() {
-      const savedUser =
-        loadAuthUser();
-
-      if (!savedUser) {
-        router.replace(
-          "/login"
-        );
-        return;
-      }
-
-      if (
-        savedUser.role ===
-          "Owner" ||
-        savedUser.role ===
-          "Office"
-      ) {
-        router.replace("/");
-        return;
-      }
-
-      if (
-        !Number.isInteger(
-          projectId
-        ) ||
-        projectId <= 0
-      ) {
-        showToast(
-          "No project was selected.",
-          "error"
-        );
-
-        router.replace(
-          "/employee-portal"
-        );
-        return;
-      }
-
-      try {
-        setDataLoaded(false);
-        setAuthUser(savedUser);
-
-        const [
-          scheduleResponse,
-          photosResponse,
-        ] =
-          await Promise.all([
-            fetch(
-              `/api/schedule?employeeId=${savedUser.employeeId}`,
-              {
-                cache:
-                  "no-store",
-              }
-            ),
-            fetch(
-              `/api/job-photos?projectId=${projectId}`,
-              {
-                cache:
-                  "no-store",
-              }
-            ),
-          ]);
-
-        const scheduleData =
-          await scheduleResponse.json();
-
-        const photosData =
-          await photosResponse.json();
-
-        if (
-          !scheduleResponse.ok
-        ) {
-          throw new Error(
-            scheduleData.error ||
-              "Unable to load schedule."
-          );
-        }
-
-        if (
-          !photosResponse.ok
-        ) {
-          throw new Error(
-            photosData.error ||
-              "Unable to load job photos."
-          );
-        }
-
-        const projectAssignment =
-          (
-            Array.isArray(
-              scheduleData
-            )
-              ? scheduleData
-              : []
-          ).find(
-            (
-              savedAssignment: ScheduleAssignment
-            ) =>
-              savedAssignment.projectId ===
-                projectId &&
-              savedAssignment.employeeIds.includes(
-                savedUser.employeeId
-              )
-          );
-
-        if (
-          !projectAssignment
-        ) {
-          throw new Error(
-            "This project is not assigned to you."
-          );
-        }
-
-        setAssignment(
-          projectAssignment
-        );
-
-        setPhotos(
-          Array.isArray(
-            photosData
-          )
-            ? photosData
-            : []
-        );
-      } catch (error) {
-        showToast(
-          error instanceof Error
-            ? error.message
-            : "Unable to load job photos.",
-          "error"
-        );
-      } finally {
-        setDataLoaded(
-          true
-        );
-      }
-    }
-
-    void loadPage();
-  }, [
-    projectId,
-    router,
-    showToast,
-  ]);
-
-  const projectPhotos =
-    useMemo(
-      () =>
-        photos.filter(
-          (photo) =>
-            photo.projectId ===
-            projectId
+  async function loadDashboardData() {
+    try {
+      const [
+        projectsResponse,
+        employeesResponse,
+        timeResponse,
+      ] = await Promise.all([
+        fetch(
+          "/api/projects",
+          {
+            cache: "no-store",
+          }
         ),
-      [
-        photos,
-        projectId,
-      ]
-    );
 
-  async function processSelectedFiles(
-    selectedFiles: File[]
-  ) {
-    const validFiles =
-      selectedFiles.filter(
-        (file) => {
-          if (
-            !file.type.startsWith(
-              "image/"
-            )
-          ) {
-            showToast(
-              `${file.name} is not an image file.`,
-              "error"
-            );
-            return false;
+        fetch(
+          "/api/employees",
+          {
+            cache: "no-store",
           }
+        ),
 
-          if (
-            file.size >
-            MAXIMUM_SOURCE_FILE_SIZE
-          ) {
-            showToast(
-              `${file.name} is larger than 10 MB.`,
-              "error"
-            );
-            return false;
+        fetch(
+          "/api/time-entries",
+          {
+            cache: "no-store",
           }
+        ),
+      ]);
 
-          return true;
-        }
-      );
-
-    if (
-      validFiles.length ===
-      0
-    ) {
-      return;
-    }
-
-    try {
-      const loadedPhotos =
-        await Promise.all(
-          validFiles.map(
-            async (
-              file,
-              index
-            ) => ({
-              id:
-                Date.now() +
-                index,
-              imageData:
-                await compressImage(
-                  file
-                ),
-              fileName:
-                file.name,
-              note: "",
-            })
-          )
-        );
-
-      setPendingPhotos(
-        (
-          currentPhotos
-        ) => [
-          ...currentPhotos,
-          ...loadedPhotos,
-        ]
-      );
-
-      showToast(
-        `${loadedPhotos.length} photo${
-          loadedPhotos.length ===
-          1
-            ? ""
-            : "s"
-        } ready to save.`,
-        "success"
-      );
-    } catch (error) {
-      showToast(
-        error instanceof Error
-          ? error.message
-          : "One or more photos could not be loaded.",
-        "error"
-      );
-    }
-  }
-
-  async function handleTakePhoto() {
-    try {
-      const photo =
-        await Camera.getPhoto({
-          quality: 85,
-          allowEditing: false,
-          resultType:
-            CameraResultType.DataUrl,
-          source:
-            CameraSource.Camera,
-          saveToGallery: false,
-          correctOrientation: true,
-        });
-
-      if (!photo.dataUrl) {
+      if (!projectsResponse.ok) {
         throw new Error(
-          "The photo could not be loaded."
+          "Unable to load projects."
         );
       }
 
-      const timestamp =
-        Date.now();
-
-      const newPhoto: PendingPhoto = {
-        id: timestamp,
-        imageData:
-          photo.dataUrl,
-        fileName:
-          `job-photo-${timestamp}.${photo.format || "jpeg"}`,
-        note: "",
-      };
-
-      setPendingPhotos(
-        (currentPhotos) => [
-          ...currentPhotos,
-          newPhoto,
-        ]
-      );
-
-      showToast(
-        "Photo ready to save.",
-        "success"
-      );
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "";
-
-      if (
-        message
-          .toLowerCase()
-          .includes("cancel")
-      ) {
-        return;
+      if (!employeesResponse.ok) {
+        throw new Error(
+          "Unable to load employees."
+        );
       }
 
+      if (!timeResponse.ok) {
+        throw new Error(
+          "Unable to load time entries."
+        );
+      }
+
+      const [
+        projectData,
+        employeeData,
+        timeData,
+      ] = await Promise.all([
+        projectsResponse.json(),
+        employeesResponse.json(),
+        timeResponse.json(),
+      ]);
+
+      setProjects(
+        Array.isArray(projectData)
+          ? projectData
+          : []
+      );
+
+      setEmployees(
+        Array.isArray(employeeData)
+          ? employeeData
+          : []
+      );
+
+      setEntries(
+        Array.isArray(timeData)
+          ? timeData
+          : []
+      );
+    } catch (error) {
       console.error(
-        "Take photo failed:",
+        "Dashboard database load failed:",
         error
       );
-
-      showToast(
-        "Unable to take photo.",
-        "error"
-      );
     }
   }
 
-  async function handlePhotoSelection(
-    event: ChangeEvent<HTMLInputElement>
-  ) {
-    const selectedFiles =
-      Array.from(
-        event.target.files ??
-          []
+  useEffect(() => {
+    void loadDashboardData();
+
+    const refreshTimer =
+      window.setInterval(
+        () => {
+          void loadDashboardData();
+        },
+        30000
       );
 
-    event.target.value =
-      "";
-
-    await processSelectedFiles(
-      selectedFiles
-    );
-  }
-
-  function updatePendingPhotoNote(
-    photoId: number,
-    note: string
-  ) {
-    setPendingPhotos(
-      (
-        currentPhotos
-      ) =>
-        currentPhotos.map(
-          (photo) =>
-            photo.id ===
-            photoId
-              ? {
-                  ...photo,
-                  note,
-                }
-              : photo
-        )
-    );
-  }
-
-  function removePendingPhoto(
-    photoId: number
-  ) {
-    setPendingPhotos(
-      (
-        currentPhotos
-      ) =>
-        currentPhotos.filter(
-          (photo) =>
-            photo.id !==
-            photoId
-        )
-    );
-  }
-
-  async function handleSavePhotos() {
-    if (
-      !authUser ||
-      !assignment
-    ) {
-      return;
-    }
-
-    if (
-      pendingPhotos.length ===
-      0
-    ) {
-      showToast(
-        "Please take or choose at least one photo.",
-        "error"
+    return () => {
+      window.clearInterval(
+        refreshTimer
       );
-      return;
-    }
+    };
+  }, []);
 
-    try {
-      setSavingPhotos(
-        true
-      );
-
-      const savedPhotos: JobPhoto[] =
-        [];
-
-      for (
-        const photo of
-        pendingPhotos
-      ) {
-        const response =
-          await fetch(
-            "/api/job-photos",
-            {
-              method:
-                "POST",
-              headers: {
-                "Content-Type":
-                  "application/json",
-              },
-              body:
-                JSON.stringify({
-                  projectId,
-                  employeeId:
-                    authUser.employeeId,
-                  imageData:
-                    photo.imageData,
-                  fileName:
-                    photo.fileName,
-                  note:
-                    photo.note.trim(),
-                }),
-            }
+  useEffect(() => {
+    const clockTimer =
+      window.setInterval(
+        () => {
+          setCurrentTime(
+            Date.now()
           );
-
-        const data =
-          await response.json();
-
-        if (
-          !response.ok
-        ) {
-          throw new Error(
-            data.error ||
-              `Unable to save ${photo.fileName}.`
-          );
-        }
-
-        savedPhotos.push(
-          data
-        );
-      }
-
-      setPhotos(
-        (
-          currentPhotos
-        ) => [
-          ...savedPhotos.reverse(),
-          ...currentPhotos,
-        ]
+        },
+        1000
       );
 
-      setPendingPhotos(
-        []
+    return () => {
+      window.clearInterval(
+        clockTimer
       );
+    };
+  }, []);
 
-      showToast(
-        `${savedPhotos.length} job photo${
-          savedPhotos.length ===
-          1
-            ? ""
-            : "s"
-        } saved.`,
-        "success"
-      );
-    } catch (error) {
-      showToast(
-        error instanceof Error
-          ? error.message
-          : "Unable to save photos.",
-        "error"
-      );
-    } finally {
-      setSavingPhotos(
-        false
-      );
-    }
-  }
+  const activeEmployees =
+    employees.filter(
+      (employee) =>
+        employee.active
+    );
 
-  async function handleConfirmDelete() {
-    if (
-      !photoToDelete ||
-      !authUser
-    ) {
-      return;
-    }
+  const activeEntries =
+    entries.filter(
+      (entry) =>
+        entry.clockOut === null
+    );
 
-    try {
-      const response =
-        await fetch(
-          `/api/job-photos?id=${photoToDelete.id}&employeeId=${authUser.employeeId}`,
-          {
-            method:
-              "DELETE",
-          }
-        );
+  const activeEmployeeIds =
+    new Set(
+      activeEntries.map(
+        (entry) =>
+          entry.employeeId
+      )
+    );
 
-      const data =
-        await response.json();
+  const activeEmployeeNames =
+    new Set(
+      activeEntries.map(
+        (entry) =>
+          entry.employeeName
+      )
+    );
 
-      if (
-        !response.ok
-      ) {
-        throw new Error(
-          data.error ||
-            "Unable to delete photo."
-        );
-      }
-
-      setPhotos(
-        (
-          currentPhotos
-        ) =>
-          currentPhotos.filter(
-            (photo) =>
-              photo.id !==
-              photoToDelete.id
+  const clockedOutEmployees =
+    activeEmployees.filter(
+      (employee) =>
+        !activeEmployeeIds.has(
+          employee.id
+        ) &&
+        !activeEmployeeNames.has(
+          getEmployeeName(
+            employee
           )
+        )
+    );
+
+  const todaysEntries =
+    useMemo(() => {
+      const today =
+        new Date(
+          currentTime
+        ).toDateString();
+
+      return entries.filter(
+        (entry) =>
+          new Date(
+            entry.clockIn
+          ).toDateString() ===
+          today
+      );
+    }, [
+      entries,
+      currentTime,
+    ]);
+
+  const totalHoursToday =
+    todaysEntries.reduce(
+      (
+        total,
+        entry
+      ) =>
+        total +
+        calculateHours(
+          entry.clockIn,
+          entry.clockOut
+        ),
+      0
+    );
+
+  const crewByProject =
+    projects
+      .map(
+        (project) => ({
+          project,
+
+          entries:
+            activeEntries.filter(
+              (entry) =>
+                entry.projectId ===
+                project.id
+            ),
+        })
+      )
+      .filter(
+        (group) =>
+          group.entries.length >
+          0
       );
 
-      setPhotoToDelete(
-        null
-      );
+  return (
+    <AppLayout>
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-4xl font-bold">
+            Dashboard
+          </h1>
 
-      showToast(
-        "Job photo deleted.",
-        "success"
-      );
-    } catch (error) {
-      showToast(
-        error instanceof Error
-          ? error.message
-          : "Unable to delete photo.",
-        "error"
-      );
-    }
-  }
+          <p className="mt-1 text-gray-500">
+            Live view of employees,
+            projects, and hours.
+          </p>
+        </div>
 
-  function openPhoto(
-    photo: JobPhoto
-  ) {
-    const photoWindow =
-      window.open(
-        "",
-        "_blank",
-        "noopener,noreferrer"
-      );
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+          <div className="rounded-xl bg-white p-6 shadow dark:bg-slate-900">
+            <p className="text-sm text-gray-500">
+              Employees Working
+            </p>
 
-    if (!photoWindow) {
-      return;
-    }
+            <p className="mt-2 text-4xl font-bold">
+              {activeEntries.length}
+            </p>
+          </div>
 
-    photoWindow.document.write(`
-      <!doctype html>
-      <html>
-        <head>
-          <title>${assignment?.projectName ?? "Job Photo"}</title>
-          <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <style>
-            body {
-              margin: 0;
-              min-height: 100vh;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              background: #0f172a;
-            }
-            img {
-              display: block;
-              max-width: 100%;
-              max-height: 100vh;
-              object-fit: contain;
-            }
-          </style>
-        </head>
-        <body>
-          <img src="${photo.imageData}" alt="Job photo" />
-        </body>
-      </html>
-    `);
+          <div className="rounded-xl bg-white p-6 shadow dark:bg-slate-900">
+            <p className="text-sm text-gray-500">
+              Active Projects
+            </p>
 
-    photoWindow.document.close();
-  }
+            <p className="mt-2 text-4xl font-bold">
+              {crewByProject.length}
+            </p>
+          </div>
 
-  if (
-    !dataLoaded ||
-    !authUser ||
-    !assignment
-  ) {
-    return (
-      <EmployeeLayout>
-        <div className="mx-auto flex min-h-[70vh] max-w-xl items-center justify-center">
-          <div className="w-full rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <div className="mx-auto h-9 w-9 animate-spin rounded-full border-4 border-blue-600 border-r-transparent" />
+          <div className="rounded-xl bg-white p-6 shadow dark:bg-slate-900">
+            <p className="text-sm text-gray-500">
+              Labor Hours Today
+            </p>
 
-            <p className="mt-4 text-slate-500 dark:text-slate-400">
-              Loading job photos...
+            <p className="mt-2 text-4xl font-bold">
+              {totalHoursToday.toFixed(
+                2
+              )}
             </p>
           </div>
         </div>
-      </EmployeeLayout>
-    );
-  }
 
-  return (
-    <EmployeeLayout>
-      <div className="mx-auto w-full max-w-xl pb-28 sm:pb-8">
-        <button
-          type="button"
-          onClick={() =>
-            router.push(
-              "/employee-portal"
-            )
-          }
-          className="mb-4 text-sm font-semibold text-blue-600 hover:underline"
-        >
-          ← Back to Today&apos;s Jobs
-        </button>
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+          <div className="rounded-xl bg-white p-6 shadow dark:bg-slate-900 xl:col-span-2">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-2xl font-semibold">
+                Currently Working
+              </h2>
 
-        <header className="mb-5">
-          <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
-            Field Records
-          </p>
+              <span className="rounded-full bg-green-100 px-3 py-1 text-sm text-green-700 dark:bg-green-950 dark:text-green-300">
+                Live
+              </span>
+            </div>
 
-          <h1 className="mt-1 text-3xl font-bold">
-            Job Photos
-          </h1>
-
-          <p className="mt-1 text-slate-500 dark:text-slate-400">
-            {assignment.projectName}
-          </p>
-        </header>
-
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <h2 className="text-xl font-bold">
-            Add Photos
-          </h2>
-
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Take photos at the jobsite or choose them from your device.
-          </p>
-
-          <input
-            ref={
-              libraryInputRef
-            }
-            type="file"
-            accept="image/*"
-            multiple
-            onChange={
-              handlePhotoSelection
-            }
-            className="hidden"
-          />
-
-          <div className="mt-5 grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() =>
-                void handleTakePhoto()
-              }
-              className="min-h-14 rounded-xl bg-blue-600 px-4 font-bold text-white hover:bg-blue-700"
-            >
-              📷 Take Photo
-            </button>
-
-            <button
-              type="button"
-              onClick={() =>
-                libraryInputRef.current?.click()
-              }
-              className="min-h-14 rounded-xl border border-blue-600 px-4 font-bold text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950"
-            >
-              Choose Photos
-            </button>
-          </div>
-
-          {pendingPhotos.length >
-            0 && (
-            <div className="mt-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-bold">
-                    Ready to Save
-                  </p>
-
-                  <p className="text-sm text-slate-500">
-                    {pendingPhotos.length} selected
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    setPendingPhotos(
-                      []
-                    )
-                  }
-                  className="text-sm font-semibold text-red-600 hover:underline"
-                >
-                  Clear All
-                </button>
-              </div>
-
-              {pendingPhotos.map(
-                (photo) => (
-                  <article
-                    key={
-                      photo.id
-                    }
-                    className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700"
-                  >
-                    <img
-                      src={
-                        photo.imageData
+            {crewByProject.length >
+            0 ? (
+              <div className="space-y-5">
+                {crewByProject.map(
+                  ({
+                    project,
+                    entries,
+                  }) => (
+                    <div
+                      key={
+                        project.id
                       }
-                      alt="Selected job photo preview"
-                      className="aspect-[4/3] w-full object-cover"
-                    />
+                      className="rounded-xl border border-slate-200 p-5 dark:border-slate-700"
+                    >
+                      <div className="mb-4 flex items-center justify-between">
+                        <div>
+                          <h3 className="text-xl font-semibold">
+                            {
+                              project.name
+                            }
+                          </h3>
 
-                    <div className="space-y-3 p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="truncate text-sm font-semibold">
+                          <p className="text-sm text-gray-500">
+                            {
+                              project.customer
+                            }
+                          </p>
+                        </div>
+
+                        <span className="rounded-full bg-green-100 px-3 py-1 text-sm text-green-700 dark:bg-green-950 dark:text-green-300">
                           {
-                            photo.fileName
-                          }
-                        </p>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            removePendingPhoto(
-                              photo.id
-                            )
-                          }
-                          className="text-sm font-semibold text-red-600 hover:underline"
-                        >
-                          Remove
-                        </button>
+                            entries.length
+                          }{" "}
+                          working
+                        </span>
                       </div>
 
-                      <textarea
-                        value={
-                          photo.note
-                        }
-                        onChange={(
-                          event
-                        ) =>
-                          updatePendingPhotoNote(
-                            photo.id,
-                            event.target.value
+                      <div className="space-y-3">
+                        {entries.map(
+                          (entry) => (
+                            <div
+                              key={
+                                entry.id
+                              }
+                              className="flex items-center justify-between rounded-lg border border-slate-200 p-4 dark:border-slate-700"
+                            >
+                              <div>
+                                <p className="font-medium">
+                                  {
+                                    entry.employeeName
+                                  }
+                                </p>
+
+                                <p className="text-sm text-gray-500">
+                                  Clocked
+                                  in at{" "}
+                                  {formatTime(
+                                    entry.clockIn
+                                  )}
+                                </p>
+                              </div>
+
+                              <p className="font-semibold">
+                                {calculateHours(
+                                  entry.clockIn,
+                                  entry.clockOut
+                                ).toFixed(
+                                  2
+                                )}{" "}
+                                hrs
+                              </p>
+                            </div>
                           )
-                        }
-                        placeholder="Optional photo note"
-                        maxLength={
-                          300
-                        }
-                        rows={3}
-                        className="w-full resize-none rounded-xl border p-3 dark:bg-slate-950"
-                      />
+                        )}
+                      </div>
                     </div>
-                  </article>
-                )
-              )}
-
-              <button
-                type="button"
-                onClick={() =>
-                  void handleSavePhotos()
-                }
-                disabled={
-                  savingPhotos
-                }
-                className="min-h-14 w-full rounded-xl bg-blue-600 px-4 font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {savingPhotos
-                  ? "Saving Photos..."
-                  : `Save ${pendingPhotos.length} Photo${
-                      pendingPhotos.length ===
-                      1
-                        ? ""
-                        : "s"
-                    }`}
-              </button>
-            </div>
-          )}
-        </section>
-
-        <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex items-end justify-between">
-            <div>
-              <p className="text-sm font-semibold text-slate-500">
-                Project Gallery
-              </p>
-
-              <h2 className="mt-1 text-2xl font-bold">
-                Job Photos
-              </h2>
-            </div>
-
-            <span className="text-sm text-slate-500">
-              {projectPhotos.length}{" "}
-              {projectPhotos.length ===
-              1
-                ? "photo"
-                : "photos"}
-            </span>
+                  )
+                )}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-slate-200 p-8 text-center text-gray-500 dark:border-slate-700">
+                No employees are
+                currently clocked
+                in.
+              </div>
+            )}
           </div>
 
-          {projectPhotos.length >
-          0 ? (
-            <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {projectPhotos.map(
-                (photo) => (
-                  <article
-                    key={
-                      photo.id
-                    }
-                    className="overflow-hidden rounded-xl border dark:border-slate-700"
-                  >
-                    <button
-                      type="button"
-                      onClick={() =>
-                        openPhoto(
-                          photo
-                        )
-                      }
-                      className="block w-full"
-                    >
-                      <img
-                        src={
-                          photo.imageData
-                        }
-                        alt={
-                          photo.note ||
-                          `Job photo for ${assignment.projectName}`
-                        }
-                        className="aspect-[4/3] w-full object-cover"
-                      />
-                    </button>
+          <div className="rounded-xl bg-white p-6 shadow dark:bg-slate-900">
+            <h2 className="mb-5 text-2xl font-semibold">
+              Not Clocked In
+            </h2>
 
-                    <div className="p-4">
+            {clockedOutEmployees.length >
+            0 ? (
+              <div className="space-y-3">
+                {clockedOutEmployees.map(
+                  (employee) => (
+                    <div
+                      key={
+                        employee.id
+                      }
+                      className="flex items-center gap-3 rounded-lg border border-slate-200 p-4 dark:border-slate-700"
+                    >
+                      <span className="h-3 w-3 rounded-full bg-gray-300" />
+
+                      <span>
+                        {getEmployeeName(
+                          employee
+                        )}
+                      </span>
+                    </div>
+                  )
+                )}
+              </div>
+            ) : (
+              <p className="text-gray-500">
+                Everyone is
+                currently clocked
+                in.
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-xl bg-white p-5 shadow dark:bg-slate-900 sm:p-6">
+          <h2 className="mb-5 text-2xl font-semibold">
+            Today&apos;s Time
+            Entries
+          </h2>
+
+          {todaysEntries.length >
+          0 ? (
+            <>
+              <div className="space-y-4 md:hidden">
+                {todaysEntries.map(
+                  (entry) => (
+                    <div
+                      key={
+                        entry.id
+                      }
+                      className="rounded-xl border border-slate-200 p-4 dark:border-slate-700"
+                    >
                       <div className="flex items-start justify-between gap-3">
-                        <div>
+                        <div className="min-w-0">
                           <p className="font-semibold">
                             {
-                              photo.employeeName
+                              entry.employeeName
                             }
                           </p>
 
-                          <p className="mt-1 text-xs text-slate-500">
-                            {formatPhotoDate(
-                              photo.createdAt
+                          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                            {
+                              entry.projectName
+                            }
+                          </p>
+                        </div>
+
+                        <div className="rounded-lg bg-blue-50 px-3 py-2 text-right dark:bg-blue-950/40">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">
+                            Hours
+                          </p>
+
+                          <p className="mt-1 text-lg font-bold text-blue-950 dark:text-blue-100">
+                            {calculateHours(
+                              entry.clockIn,
+                              entry.clockOut
+                            ).toFixed(
+                              2
+                            )}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 grid grid-cols-2 gap-3">
+                        <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-800">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                            Clock In
+                          </p>
+
+                          <p className="mt-1 font-semibold">
+                            {formatTime(
+                              entry.clockIn
                             )}
                           </p>
                         </div>
 
-                        {photo.employeeId ===
-                          authUser.employeeId && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setPhotoToDelete(
-                                photo
-                              )
-                            }
-                            className="text-sm font-semibold text-red-600 hover:underline"
-                          >
-                            Delete
-                          </button>
-                        )}
-                      </div>
+                        <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-800">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                            Clock Out
+                          </p>
 
-                      {photo.note && (
-                        <p className="mt-3 whitespace-pre-wrap text-sm text-slate-700 dark:text-slate-300">
-                          {
-                            photo.note
-                          }
-                        </p>
-                      )}
+                          <p className="mt-1 font-semibold">
+                            {entry.clockOut
+                              ? formatTime(
+                                  entry.clockOut
+                                )
+                              : "Present"}
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                  </article>
-                )
-              )}
-            </div>
-          ) : (
-            <div className="mt-5 rounded-xl border border-dashed p-8 text-center">
-              <div className="text-3xl">
-                📷
+                  )
+                )}
               </div>
 
-              <p className="mt-3 font-semibold">
-                No job photos yet
-              </p>
+              <div className="hidden overflow-x-auto md:block">
+                <table className="w-full">
+                  <thead className="bg-slate-100 dark:bg-slate-800">
+                    <tr>
+                      <th className="p-4 text-left">
+                        Employee
+                      </th>
 
-              <p className="mt-1 text-sm text-slate-500">
-                Add the first photo from this job.
-              </p>
-            </div>
+                      <th className="p-4 text-left">
+                        Project
+                      </th>
+
+                      <th className="p-4 text-left">
+                        Clock In
+                      </th>
+
+                      <th className="p-4 text-left">
+                        Clock Out
+                      </th>
+
+                      <th className="p-4 text-left">
+                        Hours
+                      </th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {todaysEntries.map(
+                      (entry) => (
+                        <tr
+                          key={
+                            entry.id
+                          }
+                          className="border-t dark:border-slate-700"
+                        >
+                          <td className="p-4">
+                            {
+                              entry.employeeName
+                            }
+                          </td>
+
+                          <td className="p-4">
+                            {
+                              entry.projectName
+                            }
+                          </td>
+
+                          <td className="p-4">
+                            {formatTime(
+                              entry.clockIn
+                            )}
+                          </td>
+
+                          <td className="p-4">
+                            {entry.clockOut
+                              ? formatTime(
+                                  entry.clockOut
+                                )
+                              : "Present"}
+                          </td>
+
+                          <td className="p-4">
+                            {calculateHours(
+                              entry.clockIn,
+                              entry.clockOut
+                            ).toFixed(
+                              2
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <p className="text-gray-500 dark:text-slate-400">
+              No time entries
+              have been recorded
+              today.
+            </p>
           )}
-        </section>
-
-        <ConfirmDialog
-          isOpen={
-            photoToDelete !==
-            null
-          }
-          title="Delete Job Photo?"
-          message="Are you sure you want to delete this photo? This action cannot be undone."
-          confirmLabel="Delete Photo"
-          cancelLabel="Cancel"
-          danger
-          onConfirm={() =>
-            void handleConfirmDelete()
-          }
-          onCancel={() =>
-            setPhotoToDelete(
-              null
-            )
-          }
-        />
+        </div>
       </div>
-    </EmployeeLayout>
-  );
-}
-
-export default function EmployeeJobPhotosPage() {
-  return (
-    <Suspense
-      fallback={
-        <EmployeeLayout>
-          <div className="mx-auto flex min-h-[70vh] max-w-xl items-center justify-center">
-            <div className="w-full rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
-              <div className="mx-auto h-9 w-9 animate-spin rounded-full border-4 border-blue-600 border-r-transparent" />
-
-              <p className="mt-4 text-slate-500 dark:text-slate-400">
-                Loading job photos...
-              </p>
-            </div>
-          </div>
-        </EmployeeLayout>
-      }
-    >
-      <EmployeeJobPhotosContent />
-    </Suspense>
+    </AppLayout>
   );
 }
