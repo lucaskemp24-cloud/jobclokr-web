@@ -15,10 +15,23 @@ import EmployeeLayout from "@/components/layout/EmployeeLayout";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/ToastProvider";
 
-import {
-  loadAuthUser,
-  type AuthUser,
-} from "@/lib/auth";
+type SessionUser = {
+  accountType: "COMPANY_USER";
+  adminId: null;
+  employeeId: number;
+  companyId: number;
+  name: string;
+  role:
+    | "Owner"
+    | "Office"
+    | "Employee";
+  isPlatformAdmin: false;
+};
+
+type SessionResponse = {
+  authenticated: boolean;
+  user: SessionUser | null;
+};
 
 type DailyNote = {
   id: number;
@@ -78,7 +91,7 @@ function EmployeeDailyNotesContent() {
     authUser,
     setAuthUser,
   ] =
-    useState<AuthUser | null>(
+    useState<SessionUser | null>(
       null
     );
 
@@ -133,46 +146,71 @@ function EmployeeDailyNotesContent() {
 
   useEffect(() => {
     async function loadPage() {
-      const savedUser =
-        loadAuthUser();
-
-      if (!savedUser) {
-        router.replace(
-          "/login"
-        );
-        return;
-      }
-
-      if (
-        savedUser.role ===
-          "Owner" ||
-        savedUser.role ===
-          "Office"
-      ) {
-        router.replace("/");
-        return;
-      }
-
-      if (
-        !Number.isInteger(
-          projectId
-        ) ||
-        projectId <= 0
-      ) {
-        showToast(
-          "No project was selected.",
-          "error"
-        );
-
-        router.replace(
-          "/employee-portal"
-        );
-        return;
-      }
-
       try {
         setDataLoaded(false);
-        setAuthUser(savedUser);
+
+        if (
+          !Number.isInteger(
+            projectId
+          ) ||
+          projectId <= 0
+        ) {
+          showToast(
+            "No project was selected.",
+            "error"
+          );
+
+          router.replace(
+            "/employee-portal"
+          );
+
+          return;
+        }
+
+        const sessionResponse =
+          await fetch(
+            "/api/session",
+            {
+              cache:
+                "no-store",
+            }
+          );
+
+        const sessionData =
+          (await sessionResponse.json()) as
+            SessionResponse;
+
+        if (
+          !sessionResponse.ok ||
+          !sessionData.authenticated ||
+          !sessionData.user
+        ) {
+          router.replace(
+            "/login"
+          );
+
+          return;
+        }
+
+        const sessionUser =
+          sessionData.user;
+
+        if (
+          sessionUser.role ===
+            "Owner" ||
+          sessionUser.role ===
+            "Office"
+        ) {
+          router.replace(
+            "/"
+          );
+
+          return;
+        }
+
+        setAuthUser(
+          sessionUser
+        );
 
         const [
           scheduleResponse,
@@ -180,7 +218,7 @@ function EmployeeDailyNotesContent() {
         ] =
           await Promise.all([
             fetch(
-              `/api/schedule?employeeId=${savedUser.employeeId}`,
+              `/api/schedule?employeeId=${sessionUser.employeeId}`,
               {
                 cache:
                   "no-store",
@@ -233,7 +271,7 @@ function EmployeeDailyNotesContent() {
               savedAssignment.projectId ===
                 projectId &&
               savedAssignment.employeeIds.includes(
-                savedUser.employeeId
+                sessionUser.employeeId
               )
           );
 
@@ -307,6 +345,7 @@ function EmployeeDailyNotesContent() {
         "Please enter a note before saving.",
         "error"
       );
+
       return;
     }
 
@@ -318,15 +357,19 @@ function EmployeeDailyNotesContent() {
           "/api/daily-notes",
           {
             method: "POST",
+
             headers: {
               "Content-Type":
                 "application/json",
             },
+
             body:
               JSON.stringify({
                 projectId,
+
                 employeeId:
                   authUser.employeeId,
+
                 note:
                   trimmedNote,
               }),
@@ -472,7 +515,9 @@ function EmployeeDailyNotesContent() {
           </h1>
 
           <p className="mt-1 text-slate-500 dark:text-slate-400">
-            {assignment.projectName}
+            {
+              assignment.projectName
+            }
           </p>
         </header>
 
@@ -486,7 +531,9 @@ function EmployeeDailyNotesContent() {
           </p>
 
           <textarea
-            value={newNote}
+            value={
+              newNote
+            }
             onChange={(
               event
             ) =>
@@ -494,7 +541,9 @@ function EmployeeDailyNotesContent() {
                 event.target.value
               )
             }
-            maxLength={5000}
+            maxLength={
+              5000
+            }
             rows={6}
             placeholder="Example: Installed cable in offices 101–105. Waiting on ceiling access in office 106."
             className="mt-5 w-full resize-y rounded-xl border border-slate-300 p-3 dark:border-slate-700 dark:bg-slate-950"
@@ -502,7 +551,10 @@ function EmployeeDailyNotesContent() {
 
           <div className="mt-2 flex items-center justify-between">
             <span className="text-xs text-slate-500">
-              {newNote.length}/5000
+              {
+                newNote.length
+              }
+              /5000
             </span>
 
             <button
@@ -536,7 +588,9 @@ function EmployeeDailyNotesContent() {
             </div>
 
             <span className="text-sm text-slate-500 dark:text-slate-400">
-              {projectNotes.length}{" "}
+              {
+                projectNotes.length
+              }{" "}
               {projectNotes.length ===
               1
                 ? "note"
@@ -587,7 +641,9 @@ function EmployeeDailyNotesContent() {
                     </div>
 
                     <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-slate-700 dark:text-slate-300">
-                      {note.note}
+                      {
+                        note.note
+                      }
                     </p>
                   </article>
                 )
