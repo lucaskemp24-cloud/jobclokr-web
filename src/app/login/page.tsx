@@ -777,12 +777,24 @@ export default function LoginPage() {
                 : "Sign In"}
           </button>
 
-          <p className="text-center text-sm text-slate-500 dark:text-slate-400">
-            {loginMode ===
-            "company"
-              ? "Need a JobClokr account? Contact JobClokr administration."
-              : "Platform administrator access only."}
-          </p>
+          <div className="text-center text-sm text-slate-500 dark:text-slate-400">
+            <p>
+              {loginMode ===
+              "company"
+                ? "Need a JobClokr account? Contact JobClokr administration."
+                : "Platform administrator access only."}
+            </p>
+
+            <p className="mt-3">
+              Need help?{" "}
+              <a
+                href="/support"
+                className="font-semibold text-blue-600 hover:text-blue-700 hover:underline dark:text-blue-400 dark:hover:text-blue-300"
+              >
+                Visit JobClokr Support
+              </a>
+            </p>
+          </div>
         </div>
       </div>
     </main>
