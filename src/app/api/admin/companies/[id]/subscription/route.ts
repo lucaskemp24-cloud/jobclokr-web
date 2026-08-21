@@ -219,7 +219,7 @@ export async function POST(
     const billableUserCount =
       company.employees.length;
 
-    const items: Stripe.SubscriptionCreateParams.Item[] =
+    const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] =
       [
         {
           price:
@@ -231,7 +231,7 @@ export async function POST(
     if (
       billableUserCount > 0
     ) {
-      items.push({
+      lineItems.push({
         price:
           userPriceId,
 
@@ -240,24 +240,54 @@ export async function POST(
       });
     }
 
-    const subscription =
-      await stripe.subscriptions.create({
+    const origin =
+      new URL(
+        request.url
+      ).origin;
+
+    const checkoutSession =
+      await stripe.checkout.sessions.create({
+        mode: "subscription",
+
         customer:
           stripeCustomerId,
 
-        items,
+        line_items:
+          lineItems,
 
-        payment_behavior:
-          "default_incomplete",
+        success_url:
+          `${origin}/admin/companies/${company.id}?stripe=success`,
 
-        payment_settings: {
-          save_default_payment_method:
-            "on_subscription",
+        cancel_url:
+          `${origin}/admin/companies/${company.id}?stripe=cancelled`,
+
+        allow_promotion_codes:
+          true,
+
+        billing_address_collection:
+          "auto",
+
+        customer_update: {
+          address: "auto",
+          name: "auto",
         },
 
-        expand: [
-          "latest_invoice.payment_intent",
-        ],
+        subscription_data: {
+          metadata: {
+            companyId:
+              String(
+                company.id
+              ),
+
+            companyCode:
+              company.code,
+
+            billableUsers:
+              String(
+                billableUserCount
+            ),
+          },
+        },
 
         metadata: {
           companyId:
@@ -275,24 +305,14 @@ export async function POST(
         },
       });
 
-    await prisma.company.update({
-      where: {
-        id: company.id,
-      },
-
-      data: {
-        stripeCustomerId,
-
-        stripeSubscriptionId:
-          subscription.id,
-
-        subscriptionStatus:
-          subscription.status.toUpperCase(),
-      },
-    });
+    if (!checkoutSession.url) {
+      throw new Error(
+        "Stripe Checkout did not return a URL."
+      );
+    }
 
     console.log(
-      "[STRIPE] Subscription created.",
+      "[STRIPE] Checkout session created.",
       {
         adminId:
           session.adminId,
@@ -305,8 +325,8 @@ export async function POST(
 
         stripeCustomerId,
 
-        stripeSubscriptionId:
-          subscription.id,
+        checkoutSessionId:
+          checkoutSession.id,
 
         billableUserCount,
       }
@@ -320,11 +340,11 @@ export async function POST(
 
       stripeCustomerId,
 
-      stripeSubscriptionId:
-        subscription.id,
+      checkoutSessionId:
+        checkoutSession.id,
 
-      subscriptionStatus:
-        subscription.status.toUpperCase(),
+      checkoutUrl:
+        checkoutSession.url,
 
       billableUserCount,
 
@@ -343,14 +363,14 @@ export async function POST(
     });
   } catch (error) {
     console.error(
-      "[STRIPE] Failed to create subscription:",
+      "[STRIPE] Failed to create checkout session:",
       error
     );
 
     return NextResponse.json(
       {
         error:
-          "Unable to create Stripe subscription.",
+          "Unable to create Stripe checkout session.",
       },
       {
         status: 500,
