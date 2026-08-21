@@ -691,48 +691,32 @@ export default function AdminCompanyPage() {
           typeof data?.error ===
             "string"
             ? data.error
-            : "Unable to create Stripe subscription."
+            : "Unable to create Stripe checkout session."
         );
       }
 
-      setCompany(
-        (currentCompany) => {
-          if (!currentCompany) {
-            return currentCompany;
-          }
+      if (
+        typeof data?.checkoutUrl !==
+          "string" ||
+        !data.checkoutUrl
+      ) {
+        throw new Error(
+          "Stripe Checkout URL was not returned."
+        );
+      }
 
-          return {
-            ...currentCompany,
-
-            stripeCustomerId:
-              data.stripeCustomerId,
-
-            stripeSubscriptionId:
-              data.stripeSubscriptionId,
-
-            subscriptionStatus:
-              data.subscriptionStatus,
-          };
-        }
-      );
-
-      setSubscriptionStatus(
-        data.subscriptionStatus
-      );
-
-      setSubscriptionMessage(
-        `Stripe subscription created successfully. ${data.billableUserCount ?? 0} billable user${data.billableUserCount === 1 ? "" : "s"}.`
-      );
+      window.location.href =
+        data.checkoutUrl;
     } catch (createError) {
       console.error(
-        "Stripe subscription creation failed:",
+        "Stripe checkout creation failed:",
         createError
       );
 
       setSubscriptionError(
         createError instanceof Error
           ? createError.message
-          : "Unable to create Stripe subscription."
+          : "Unable to open Stripe Checkout."
       );
     } finally {
       setCreatingStripeSubscription(
