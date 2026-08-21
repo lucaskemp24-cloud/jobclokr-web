@@ -386,6 +386,12 @@ export default function AdminCompanyPage() {
     useState("");
 
   const [
+    creatingStripeSubscription,
+    setCreatingStripeSubscription,
+  ] =
+    useState(false);
+
+  const [
     showEmployeeForm,
     setShowEmployeeForm,
   ] =
@@ -649,6 +655,91 @@ export default function AdminCompanyPage() {
     companyId,
     router,
   ]);
+
+  async function createStripeSubscription() {
+    if (!company) {
+      return;
+    }
+
+    try {
+      setCreatingStripeSubscription(
+        true
+      );
+
+      setSubscriptionMessage(
+        ""
+      );
+
+      setSubscriptionError(
+        ""
+      );
+
+      const response =
+        await fetch(
+          `/api/admin/companies/${company.id}/subscription`,
+          {
+            method:
+              "POST",
+          }
+        );
+
+      const data =
+        await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          typeof data?.error ===
+            "string"
+            ? data.error
+            : "Unable to create Stripe subscription."
+        );
+      }
+
+      setCompany(
+        (currentCompany) => {
+          if (!currentCompany) {
+            return currentCompany;
+          }
+
+          return {
+            ...currentCompany,
+
+            stripeCustomerId:
+              data.stripeCustomerId,
+
+            stripeSubscriptionId:
+              data.stripeSubscriptionId,
+
+            subscriptionStatus:
+              data.subscriptionStatus,
+          };
+        }
+      );
+
+      setSubscriptionStatus(
+        data.subscriptionStatus
+      );
+
+      setSubscriptionMessage(
+        `Stripe subscription created successfully. ${data.billableUserCount ?? 0} billable user${data.billableUserCount === 1 ? "" : "s"}.`
+      );
+    } catch (createError) {
+      console.error(
+        "Stripe subscription creation failed:",
+        createError
+      );
+
+      setSubscriptionError(
+        createError instanceof Error
+          ? createError.message
+          : "Unable to create Stripe subscription."
+      );
+    } finally {
+      setCreatingStripeSubscription(
+        false
+      );
+    }
+  }
 
   async function saveSubscriptionStatus() {
     if (
@@ -2008,7 +2099,50 @@ export default function AdminCompanyPage() {
                     Subscription
                   </p>
 
-                  <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/50">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="font-semibold text-slate-950 dark:text-white">
+                          Stripe Billing
+                        </p>
+
+                        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+                          $40/month includes the owner, plus $5/month for each active Office, Foreman, or Employee user.
+                        </p>
+
+                        <p className="mt-2 text-sm font-medium text-slate-700 dark:text-slate-300">
+                          Billable users: {company.employees.filter(
+                            (employee) =>
+                              employee.active &&
+                              employee.role !== "OWNER"
+                          ).length}
+                        </p>
+                      </div>
+
+                      {company.stripeSubscriptionId ? (
+                        <span className="shrink-0 rounded-full bg-green-100 px-4 py-2 text-sm font-semibold text-green-700 dark:bg-green-950 dark:text-green-300">
+                          Stripe Connected
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void createStripeSubscription()
+                          }
+                          disabled={
+                            creatingStripeSubscription
+                          }
+                          className="shrink-0 rounded-lg bg-violet-600 px-4 py-2 font-semibold text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {creatingStripeSubscription
+                            ? "Creating..."
+                            : "Create Stripe Subscription"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
                     <select
                       value={
                         subscriptionStatus
