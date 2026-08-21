@@ -443,7 +443,7 @@ export default function EmployeeLayout({
         }}
         aria-label="Employee navigation"
       >
-        <div className="mx-auto grid max-w-xl grid-cols-4 gap-1">
+        <div className="mx-auto grid max-w-xl grid-cols-2 gap-1">
           <button
             type="button"
             onClick={() =>
@@ -459,42 +459,6 @@ export default function EmployeeLayout({
 
             <span className="mt-1 text-xs font-semibold">
               Home
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              scrollToSection(
-                "assignment-section"
-              )
-            }
-            className="flex min-h-14 flex-col items-center justify-center rounded-xl text-slate-500 dark:text-slate-400"
-          >
-            <span className="text-xl">
-              ▣
-            </span>
-
-            <span className="mt-1 text-xs font-semibold">
-              Assignment
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              scrollToSection(
-                "hours-section"
-              )
-            }
-            className="flex min-h-14 flex-col items-center justify-center rounded-xl text-slate-500 dark:text-slate-400"
-          >
-            <span className="text-xl">
-              ◷
-            </span>
-
-            <span className="mt-1 text-xs font-semibold">
-              Hours
             </span>
           </button>
 
